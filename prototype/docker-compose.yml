@@ -1,0 +1,18 @@
+services:
+  titiler:
+    build: ./titiler
+    container_name: sdp-prototype-titiler
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  web:
+    image: nginx:alpine
+    container_name: sdp-prototype-web
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+    depends_on:
+      - titiler
+    restart: unless-stopped

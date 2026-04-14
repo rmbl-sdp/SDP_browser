@@ -1,0 +1,1773 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SDP Browser — Prototype</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+    />
+    <style>
+      :root {
+        --bg: #1b1f24;
+        --panel: #262b32;
+        --text: #e6e9ef;
+        --muted: #8a93a0;
+        --accent: #d4603a;
+        --border: #333942;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+      #app {
+        display: grid;
+        grid-template-columns: 340px 1fr;
+        height: 100vh;
+      }
+      #panel {
+        background: var(--panel);
+        border-right: 1px solid var(--border);
+        overflow-y: auto;
+        padding: 16px;
+      }
+      #panel h1 {
+        font-size: 15px;
+        margin: 0 0 4px;
+        letter-spacing: 0.02em;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #panel h1 img {
+        height: 24px;
+        width: auto;
+        display: block;
+      }
+      #panel .subtitle {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 16px;
+      }
+      #panel h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin: 18px 0 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+      }
+      #panel h2 .count {
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      #panel h3.sub {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: none;
+        color: var(--text);
+        margin: 14px 0 6px;
+        letter-spacing: 0;
+      }
+      #catalog {
+        max-height: 240px;
+        overflow-y: auto;
+        margin-bottom: 4px;
+      }
+      .search-wrap {
+        position: relative;
+        margin-bottom: 10px;
+      }
+      .search-wrap input[type="search"] {
+        margin-bottom: 0;
+        padding-right: 28px;
+      }
+      .search-wrap input[type="search"]::-webkit-search-cancel-button {
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      .search-clear {
+        position: absolute;
+        top: 50%;
+        right: 4px;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        font-size: 12px;
+        line-height: 1;
+        background: transparent;
+        color: var(--muted);
+        border: 0;
+      }
+      .search-clear:hover { color: var(--text); }
+      .cat-item, .act-item {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        margin-bottom: 6px;
+        font-size: 12px;
+        transition: border-color 120ms;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .cat-item { padding: 8px 10px; }
+      .cat-item .t, .act-item .t {
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.3;
+      }
+      .cat-item .d {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 3px;
+      }
+      .cat-item .t, .cat-item .d { overflow-wrap: break-word; }
+      .cat-item-row {
+        display: flex; gap: 6px; align-items: flex-start; width: 100%;
+      }
+      .cat-item-body { flex: 1 1 auto; min-width: 0; }
+      .cat-item button {
+        flex: 0 0 auto; width: auto;
+        padding: 3px 8px; font-size: 11px; white-space: nowrap;
+      }
+      .cat-item.added button { background: #333942; color: var(--muted); }
+
+      .act-item.expanded { border-color: var(--accent); }
+      .act-item.dragging { opacity: 0.5; }
+      .act-item.drag-over { border-color: var(--accent); box-shadow: 0 -2px 0 var(--accent); }
+      .act-item.drag-over-after { border-color: var(--accent); box-shadow: 0 2px 0 var(--accent); }
+      .act-row {
+        display: flex; align-items: center; gap: 6px;
+        padding: 6px 8px; cursor: pointer;
+      }
+      .act-row .grip {
+        color: var(--muted); cursor: grab; user-select: none;
+        font-size: 12px; padding: 0 2px; line-height: 1;
+      }
+      .act-row .grip:active { cursor: grabbing; }
+      .act-row .t {
+        flex: 1; min-width: 0;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .act-row button {
+        background: transparent; color: var(--text);
+        border: 1px solid var(--border);
+        padding: 2px 6px; font-size: 11px;
+        width: auto; min-width: 22px; font-weight: normal;
+      }
+      .act-row button:hover { border-color: var(--accent); }
+      .act-row .vis-off { opacity: 0.4; }
+      .act-body {
+        border-top: 1px dashed var(--border);
+        padding: 8px 10px 10px;
+        font-size: 12px;
+      }
+      .act-body label {
+        font-size: 11px; color: var(--muted);
+        display: block; margin: 6px 0 3px;
+      }
+      .act-body label:first-child { margin-top: 0; }
+      .act-body select, .act-body input[type="text"] {
+        width: 100%; padding: 4px 6px;
+        background: #1b1f24; border: 1px solid var(--border);
+        color: var(--text); border-radius: 4px;
+        font-size: 12px; box-sizing: border-box;
+      }
+      .act-body input[type="range"] { width: 100%; }
+
+      .cmap-picker { position: relative; }
+      .cmap-picker-btn {
+        width: 100%; height: 22px; border-radius: 4px;
+        border: 1px solid var(--border);
+        box-sizing: border-box;
+        cursor: pointer; padding: 0 8px;
+        font-size: 11px; font-weight: 600; color: #fff;
+        text-shadow: 0 0 3px rgba(0,0,0,0.7), 0 1px 1px rgba(0,0,0,0.6);
+        display: flex; align-items: center; justify-content: space-between;
+        background-size: 100% 100%;
+      }
+      .cmap-picker-btn[disabled] { cursor: default; opacity: 0.6; }
+      .cmap-picker-btn .chev { font-size: 9px; opacity: 0.9; }
+      .cmap-picker-menu {
+        position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+        background: #1b1f24; border: 1px solid var(--border);
+        border-radius: 4px; padding: 4px;
+        z-index: 20; box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+        display: none; max-height: 300px; overflow-y: auto;
+      }
+      .cmap-picker.open .cmap-picker-menu { display: block; }
+      .cmap-picker-option {
+        width: 100%; height: 22px; border-radius: 3px; cursor: pointer;
+        box-sizing: border-box;
+        padding: 0 8px; margin-bottom: 2px;
+        font-size: 11px; font-weight: 600; color: #fff;
+        text-shadow: 0 0 3px rgba(0,0,0,0.7), 0 1px 1px rgba(0,0,0,0.6);
+        display: flex; align-items: center;
+        background-size: 100% 100%;
+      }
+      .cmap-picker-option:last-child { margin-bottom: 0; }
+      .cmap-picker-option:hover { outline: 1px solid var(--accent); outline-offset: -1px; }
+      .cmap-picker-option.selected { outline: 1px solid var(--accent); outline-offset: -1px; }
+      .act-body .value {
+        color: var(--text); font-variant-numeric: tabular-nums;
+        float: right;
+      }
+      .act-body .time-nav {
+        display: flex; gap: 4px; margin-top: 6px;
+      }
+      .act-body .time-nav button {
+        flex: 1; background: #333942; color: var(--text);
+        font-weight: normal; padding: 4px; font-size: 11px;
+      }
+
+      label {
+        font-size: 12px; display: block; margin-bottom: 4px; color: var(--muted);
+      }
+      select, input[type="text"], input[type="search"] {
+        width: 100%; padding: 6px 8px;
+        background: #1b1f24; border: 1px solid var(--border);
+        color: var(--text); border-radius: 4px;
+        font-size: 12px; margin-bottom: 10px; box-sizing: border-box;
+      }
+      button {
+        background: var(--accent); color: #0b1220; border: 0;
+        padding: 8px 10px; border-radius: 4px;
+        cursor: pointer; font-weight: 600; font-size: 12px;
+        width: 100%;
+      }
+      button.secondary { background: #333942; color: var(--text); }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      #stats {
+        font-size: 12px; margin-top: 10px;
+        background: #1b1f24; border: 1px solid var(--border);
+        border-radius: 4px; padding: 8px;
+        max-height: 420px; overflow: auto;
+      }
+      .stats-band { margin-bottom: 10px; }
+      .stats-band + .stats-band {
+        border-top: 1px dashed var(--border); padding-top: 8px;
+      }
+      .stats-band h3 {
+        font-size: 12px; margin: 0 0 6px; color: var(--accent);
+      }
+      .stats-grid {
+        display: grid; grid-template-columns: auto 1fr;
+        gap: 2px 10px; font-size: 11px;
+        font-family: ui-monospace, monospace; margin-bottom: 6px;
+      }
+      .stats-grid .k { color: var(--muted); }
+      .stats-grid .v {
+        color: var(--text); text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .hist svg { width: 100%; height: 80px; display: block; }
+      .hist-axis {
+        display: flex; justify-content: space-between;
+        font-size: 10px; color: var(--muted); margin-top: 2px;
+        font-variant-numeric: tabular-nums;
+      }
+      details.raw { margin-top: 6px; }
+      details.raw summary {
+        font-size: 10px; color: var(--muted); cursor: pointer;
+      }
+      details.raw pre {
+        font-size: 10px; font-family: ui-monospace, monospace;
+        background: #111418; padding: 6px; border-radius: 3px;
+        max-height: 160px; overflow: auto; white-space: pre-wrap;
+      }
+
+      #map { position: relative; }
+      .aoi-rect {
+        position: absolute; border: 2px dashed var(--accent);
+        background: rgba(212, 96, 58, 0.15); pointer-events: none;
+      }
+      .hint {
+        font-size: 11px; color: var(--muted);
+        margin-top: -4px; margin-bottom: 10px;
+      }
+
+      .dl-btn {
+        display: inline-block;
+        background: #333942; color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 5px 10px;
+        font-size: 11px;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .dl-btn:hover { border-color: var(--accent); color: var(--text); }
+      .dl-btn.disabled {
+        opacity: 0.4; pointer-events: none;
+      }
+
+      /* Floating legend panel on the map */
+      #mapLegend {
+        position: absolute; top: 50%; right: 12px;
+        transform: translateY(-50%);
+        z-index: 10;
+        background: rgba(38, 43, 50, 0.92);
+        border: 1px solid var(--border);
+        border-radius: 6px; padding: 8px 10px;
+        color: var(--text); font-size: 11px;
+        max-width: 240px; backdrop-filter: blur(6px);
+        pointer-events: auto;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+      }
+      #mapLegend.empty { display: none; }
+      .legend-entry { margin-bottom: 8px; }
+      .legend-entry:last-child { margin-bottom: 0; }
+      .legend-entry .lt {
+        font-weight: 600; font-size: 11px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .legend-entry .lmeta {
+        color: var(--muted); font-size: 10px; margin-bottom: 3px;
+      }
+      .legend-entry .bar {
+        height: 8px; border-radius: 2px; margin-bottom: 2px;
+      }
+      .legend-entry .labels {
+        display: flex; justify-content: space-between;
+        color: var(--muted); font-size: 10px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Map overlay control: labels / roads toggle */
+      #mapCtls {
+        position: absolute; top: 10px; left: 10px;
+        z-index: 10;
+        background: rgba(38, 43, 50, 0.92);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 11px; color: var(--text);
+        display: flex; align-items: center; gap: 6px;
+        user-select: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+      }
+      #mapCtls {
+        flex-wrap: wrap;
+      }
+      #mapCtls label {
+        display: flex; align-items: center; gap: 4px;
+        margin: 0; cursor: pointer; color: var(--text); font-size: 11px;
+      }
+      .maplibregl-popup-content {
+        background: #262b32 !important;
+        color: var(--text) !important;
+        font-size: 11px;
+        padding: 8px 10px !important;
+        border: 1px solid var(--border);
+      }
+      .maplibregl-popup-tip { border-top-color: #262b32 !important; border-bottom-color: #262b32 !important; }
+      .maplibregl-popup-close-button { color: var(--text) !important; }
+      .site-popup h4 { margin: 0 0 4px; font-size: 12px; color: var(--accent); }
+      .site-popup dl { margin: 0 0 6px; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-size: 11px; }
+      .site-popup dt { color: var(--muted); }
+      .site-popup dd { margin: 0; word-break: break-word; }
+      .site-popup .popup-aoi {
+        background: var(--accent); color: #0b1220;
+        border: 0; padding: 4px 8px; border-radius: 3px;
+        font-size: 11px; font-weight: 600; cursor: pointer; width: auto;
+      }
+      .site-popup .popup-aoi:hover { filter: brightness(1.1); }
+
+      /* MapLibre control tweaks for a darker, minimal look */
+      .maplibregl-ctrl-scale {
+        background: rgba(38, 43, 50, 0.85);
+        color: var(--text);
+        border-color: var(--text);
+        font-size: 11px;
+      }
+      .maplibregl-ctrl-group {
+        background: rgba(38, 43, 50, 0.92) !important;
+      }
+      .maplibregl-ctrl-group button {
+        background-color: transparent !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="panel">
+        <h1>
+          <a href="https://rmbl.org" target="_blank" rel="noopener">
+            <img src="https://rmbl-forecasts.s3.us-east-1.amazonaws.com/flowercast/RMBL_new_logo.png" alt="RMBL" />
+          </a>
+          <span>SDP Browser — Prototype</span>
+        </h1>
+        <div class="subtitle">Local TiTiler + toy catalog. Slow, but honest.</div>
+
+        <h2>Catalog <span class="count" id="catCount"></span></h2>
+        <div class="search-wrap">
+          <input id="catSearch" type="search" placeholder="Search layers…" autocomplete="off" />
+          <button id="catClear" class="search-clear" type="button" hidden aria-label="Clear search">✕</button>
+        </div>
+        <div id="catalog"></div>
+        <div id="catalogEmpty" class="hint">Type to search the catalog.</div>
+
+        <h2>Active layers <span class="count" id="actCount"></span></h2>
+        <div id="active"></div>
+        <div id="activeEmpty" class="hint">No layers yet — add one from the catalog above.</div>
+
+        <h2>Data Exploration &amp; Subsetting</h2>
+        <div class="hint">Summaries &amp; subsets operate on the topmost visible layer.</div>
+
+        <h3 class="sub">Define an Area of Interest</h3>
+        <div class="hint">Click <em>Draw an Area of Interest</em>, then drag on the map.</div>
+        <button id="aoiBtn" class="secondary">Draw an Area of Interest</button>
+
+        <h3 class="sub">AOI Summaries</h3>
+        <div id="stats" hidden></div>
+        <div id="statsEmpty" class="hint">Draw an AOI to see per-band statistics and histograms.</div>
+
+        <h3 class="sub">Subset Data by AOI</h3>
+        <div id="aoiDownloads" hidden>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <button id="dlTif" class="dl-btn">Download GeoTIFF Subset</button>
+            <button id="dlPng" class="dl-btn">Download PNG Subset</button>
+            <button id="dlR" class="dl-btn">Copy Subset R Code</button>
+          </div>
+          <div id="dlInfo" class="hint" style="margin-top: 6px;"></div>
+        </div>
+        <div id="aoiDownloadsEmpty" class="hint">Draw an AOI to enable subset downloads.</div>
+      </aside>
+      <div id="map">
+        <div id="mapCtls">
+          <label><input type="checkbox" id="refToggle" checked /> Labels &amp; roads</label>
+          <label><input type="checkbox" id="sitesToggle" /> Research sites</label>
+          <span id="sitesStatus" style="color: var(--muted); font-size: 10px;"></span>
+        </div>
+        <div id="mapLegend" class="empty"></div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <script>
+      const TITILER = "http://localhost:8000";
+      const SINGLEBAND_CMAPS = [
+        "viridis","magma","inferno","cividis","terrain",
+        "rdbu","rdbu_r","spectral","greys","ylgnbu",
+      ];
+
+      const state = {
+        catalog: null,
+        active: [],
+        expandedUid: null, // only one expanded at a time; also serves as "focused"
+        aoi: null,
+        aoiArmed: false,
+        catSearch: "",
+        referenceOn: true,
+        sitesOn: false,
+        sitesData: null, // cached FeatureCollection once loaded
+      };
+      let nextUid = 1;
+      let dragUid = null;
+
+      function dropOnto(targetUid, after) {
+        if (dragUid == null || dragUid === targetUid) return;
+        const from = state.active.findIndex((l) => l.uid === dragUid);
+        let to = state.active.findIndex((l) => l.uid === targetUid);
+        if (from < 0 || to < 0) return;
+        const [moved] = state.active.splice(from, 1);
+        if (from < to) to -= 1;
+        if (after) to += 1;
+        state.active.splice(to, 0, moved);
+        reorderMapLayers();
+        ensureAoiOnTop();
+        renderActive();
+        renderMapLegend();
+        updateAoiDownloads();
+        if (state.aoi) fetchStats();
+        updateHash();
+      }
+
+      // ---------- map ----------
+      const map = new maplibregl.Map({
+        container: "map",
+        style: {
+          version: 8,
+          sources: {
+            basemap: {
+              type: "raster",
+              tiles: [
+                "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+              ],
+              tileSize: 256,
+              attribution: "Esri World Imagery",
+            },
+          },
+          layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+        },
+        center: [-106.77, 38.77],
+        zoom: 9,
+      });
+      map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: "metric" }), "bottom-left");
+      map.addControl(
+        new maplibregl.NavigationControl({ showCompass: true, showZoom: false, visualizePitch: false }),
+        "top-right",
+      );
+
+      // ---------- colormaps (client-side LUTs) ----------
+      const COLORMAPS = {
+        viridis: ["#440154","#472d7b","#3b528b","#2c728e","#21918c","#28ae80","#5ec962","#addc30","#fde725"],
+        magma:   ["#000004","#180f3d","#440f76","#721f81","#9e2f7f","#cd4071","#f1605d","#fd9668","#fec98d","#fcfdbf"],
+        inferno: ["#000004","#1b0c41","#4a0c6b","#781c6d","#a52c60","#cf4446","#ed6925","#fb9b06","#f7d13d","#fcffa4"],
+        cividis: ["#00224e","#123570","#3b496c","#575d6d","#707173","#8a8678","#a59c74","#c3b369","#e1cc55","#fee838"],
+        terrain: ["#333399","#0066cc","#00ccff","#66ff66","#ccff66","#ffff66","#cc9966","#996633","#ffffff"],
+        rdbu:    ["#67001f","#b2182b","#d6604d","#f4a582","#fddbc7","#f7f7f7","#d1e5f0","#92c5de","#4393c3","#2166ac","#053061"],
+        rdbu_r:  ["#053061","#2166ac","#4393c3","#92c5de","#d1e5f0","#f7f7f7","#fddbc7","#f4a582","#d6604d","#b2182b","#67001f"],
+        spectral:["#9e0142","#d53e4f","#f46d43","#fdae61","#fee08b","#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd","#5e4fa2"],
+        greys:   ["#ffffff","#d9d9d9","#bdbdbd","#969696","#737373","#525252","#252525","#000000"],
+        ylgnbu:  ["#ffffd9","#edf8b1","#c7e9b4","#7fcdbb","#41b6c4","#1d91c0","#225ea8","#253494","#081d58"],
+      };
+      function hexToRGB(h) {
+        const n = parseInt(h.slice(1), 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      }
+      const CMAP_RGB_CACHE = {};
+      function cmapRGB(name) {
+        if (!CMAP_RGB_CACHE[name]) {
+          const stops = COLORMAPS[name] || COLORMAPS.viridis;
+          CMAP_RGB_CACHE[name] = stops.map(hexToRGB);
+        }
+        return CMAP_RGB_CACHE[name];
+      }
+      function sampleColormap(name, t) {
+        const rgb = cmapRGB(name);
+        if (t <= 0) return `rgb(${rgb[0].join(",")})`;
+        if (t >= 1) return `rgb(${rgb[rgb.length - 1].join(",")})`;
+        const pos = t * (rgb.length - 1);
+        const i = Math.floor(pos);
+        const f = pos - i;
+        const a = rgb[i], b = rgb[i + 1];
+        return `rgb(${Math.round(a[0]+(b[0]-a[0])*f)},${Math.round(a[1]+(b[1]-a[1])*f)},${Math.round(a[2]+(b[2]-a[2])*f)})`;
+      }
+
+      // ---------- active layer helpers ----------
+      function catalogItem(id) { return state.catalog.items.find((i) => i.id === id); }
+      function focused() { return state.active.find((l) => l.uid === state.expandedUid) || null; }
+      // The layer that stats/downloads target: topmost visible active layer.
+      // Decoupled from `focused()` (which just tracks which row's control panel
+      // is open) so hiding the expanded layer doesn't surprise the extraction.
+      function targetLayer() { return state.active.find((l) => l.visible) || null; }
+      const mapLayerId = (uid) => `cog-${uid}`;
+      const mapSourceId = (uid) => `cog-${uid}`;
+
+      function resolveCogUrl(lyr) {
+        const item = catalogItem(lyr.catalogId);
+        if (item.kind === "timeseries") {
+          const y = lyr.year ?? item.default_year ?? item.years[0];
+          return item.url_template.replace("{year}", y);
+        }
+        return item.cog_url;
+      }
+      // Returns { bidx: number[], useColormap: boolean } for a given layer/item.
+      function renderSpec(lyr, item) {
+        if (item.kind === "multiband") {
+          if (lyr.mode === "single") {
+            return { bidx: [lyr.bidx?.[0] ?? item.bands[0].idx], useColormap: true };
+          }
+          return { bidx: (lyr.bidx && lyr.bidx.length === 3 ? lyr.bidx : (item.default_bidx || [1, 2, 3])), useColormap: false };
+        }
+        if (item.kind === "rgb") return { bidx: item.bidx || [1, 2, 3], useColormap: false };
+        return { bidx: [], useColormap: true };
+      }
+      function tileUrl(lyr) {
+        const item = catalogItem(lyr.catalogId);
+        const u = new URL(`${TITILER}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png`);
+        u.searchParams.set("url", resolveCogUrl(lyr));
+        u.searchParams.set("rescale", lyr.rescale);
+        const spec = renderSpec(lyr, item);
+        spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
+        if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", lyr.colormap);
+        return u.toString().replace(/%7B/g, "{").replace(/%7D/g, "}");
+      }
+
+      function addMapLayer(lyr) {
+        const item = catalogItem(lyr.catalogId);
+        const src = mapSourceId(lyr.uid);
+        const mid = mapLayerId(lyr.uid);
+        if (map.getLayer(mid)) map.removeLayer(mid);
+        if (map.getSource(src)) map.removeSource(src);
+        map.addSource(src, {
+          type: "raster",
+          tiles: [tileUrl(lyr)],
+          tileSize: 256,
+          bounds: item.bbox,
+        });
+        map.addLayer({
+          id: mid,
+          type: "raster",
+          source: src,
+          layout: { visibility: lyr.visible ? "visible" : "none" },
+          paint: { "raster-opacity": lyr.opacity },
+        });
+      }
+
+      // Per-uid in-flight reload state so rapid changes don't stack up
+      // sourcedata handlers + safety timeouts that would each fire a redundant
+      // swap when the new source eventually loads.
+      const reloadCtl = {};
+
+      function cancelReload(uid) {
+        const ctl = reloadCtl[uid];
+        if (!ctl) return;
+        if (ctl.onSourceData) map.off("sourcedata", ctl.onSourceData);
+        if (ctl.timeout) clearTimeout(ctl.timeout);
+        delete reloadCtl[uid];
+      }
+
+      function reloadMapLayer(lyr) {
+        const item = catalogItem(lyr.catalogId);
+        const src = mapSourceId(lyr.uid);
+        const mid = mapLayerId(lyr.uid);
+        const tmpSrc = `${src}-r`;
+        const tmpMid = `${mid}-r`;
+
+        // Tear down any previous in-flight reload + its temp source/layer.
+        cancelReload(lyr.uid);
+        if (map.getLayer(tmpMid)) map.removeLayer(tmpMid);
+        if (map.getSource(tmpSrc)) map.removeSource(tmpSrc);
+
+        map.addSource(tmpSrc, {
+          type: "raster",
+          tiles: [tileUrl(lyr)],
+          tileSize: 256,
+          bounds: item.bbox,
+        });
+        map.addLayer({
+          id: tmpMid, type: "raster", source: tmpSrc,
+          layout: { visibility: lyr.visible ? "visible" : "none" },
+          paint: { "raster-opacity": lyr.opacity },
+        });
+
+        let done = false;
+        const swap = () => {
+          if (done) return;
+          done = true;
+          cancelReload(lyr.uid);
+          // If the user removed the layer while we were waiting, bail.
+          if (!state.active.some((l) => l.uid === lyr.uid)) {
+            if (map.getLayer(tmpMid)) map.removeLayer(tmpMid);
+            if (map.getSource(tmpSrc)) map.removeSource(tmpSrc);
+            return;
+          }
+          if (map.getLayer(mid)) map.removeLayer(mid);
+          if (map.getSource(src)) map.removeSource(src);
+          if (map.getLayer(tmpMid)) map.removeLayer(tmpMid);
+          if (map.getSource(tmpSrc)) map.removeSource(tmpSrc);
+          addMapLayer(lyr);
+          reorderMapLayers();
+          ensureAoiOnTop();
+        };
+        const onSourceData = (e) => {
+          if (e.sourceId === tmpSrc && e.isSourceLoaded) swap();
+        };
+        map.on("sourcedata", onSourceData);
+        const timeout = setTimeout(swap, 8000);
+        reloadCtl[lyr.uid] = { onSourceData, timeout };
+      }
+
+      function removeMapLayer(uid) {
+        cancelReload(uid);
+        const mid = mapLayerId(uid), src = mapSourceId(uid);
+        const tmpMid = `${mid}-r`, tmpSrc = `${src}-r`;
+        if (map.getLayer(mid)) map.removeLayer(mid);
+        if (map.getSource(src)) map.removeSource(src);
+        if (map.getLayer(tmpMid)) map.removeLayer(tmpMid);
+        if (map.getSource(tmpSrc)) map.removeSource(tmpSrc);
+      }
+      function reorderMapLayers() {
+        const aoiExists = map.getLayer("aoi-fill");
+        const before = aoiExists ? "aoi-fill" : undefined;
+        for (let i = state.active.length - 1; i >= 0; i--) {
+          const mid = mapLayerId(state.active[i].uid);
+          if (map.getLayer(mid)) before ? map.moveLayer(mid, before) : map.moveLayer(mid);
+        }
+        ensureReferenceOnTop();
+      }
+
+      // Reference overlays (transparent) from Esri:
+      //   - World_Transportation:        roads, rail
+      //   - World_Boundaries_and_Places: admin boundaries + place names
+      // Stacked above all data + AOI layers so they stay readable.
+      const REFERENCE_SOURCES = [
+        {
+          id: "ref-transport",
+          tiles: "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}",
+          attribution: "Esri Transportation",
+        },
+        {
+          id: "ref-places",
+          tiles: "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+          attribution: "Esri Boundaries &amp; Places",
+        },
+      ];
+      function ensureReferenceLayer() {
+        REFERENCE_SOURCES.forEach((s) => {
+          if (!map.getSource(s.id)) {
+            map.addSource(s.id, {
+              type: "raster", tiles: [s.tiles], tileSize: 256, attribution: s.attribution,
+            });
+            map.addLayer({
+              id: s.id, type: "raster", source: s.id,
+              layout: { visibility: state.referenceOn ? "visible" : "none" },
+              paint: { "raster-opacity": 1 },
+            });
+          }
+        });
+      }
+      function ensureReferenceOnTop() {
+        REFERENCE_SOURCES.forEach((s) => {
+          if (map.getLayer(s.id)) map.moveLayer(s.id);
+        });
+        ensureSitesOnTop();
+      }
+
+      // -------- RMBL research sites (classic ArcGIS FeatureServer) --------
+      // OGCFeatureServer still requires a token even after "public" sharing;
+      // the classic FeatureServer respects item sharing and returns GeoJSON.
+      const SITES_QUERY_URL =
+        "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026_Public_View/FeatureServer/14/query";
+
+      async function fetchResearchSites() {
+        const features = [];
+        let offset = 0;
+        const PAGE = 1000;
+        const SAFETY_CAP = 20000;
+        while (offset < SAFETY_CAP) {
+          const u = new URL(SITES_QUERY_URL);
+          u.searchParams.set("where", "1=1");
+          u.searchParams.set("outFields", "*");
+          u.searchParams.set("outSR", "4326");
+          u.searchParams.set("f", "geojson");
+          u.searchParams.set("resultOffset", String(offset));
+          u.searchParams.set("resultRecordCount", String(PAGE));
+          const resp = await fetch(u.toString());
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const data = await resp.json();
+          if (data.error) throw new Error(data.error.message || "FeatureServer error");
+          const page = data.features || [];
+          features.push(...page);
+          if (!data.exceededTransferLimit || page.length === 0) break;
+          offset += page.length;
+        }
+        return { type: "FeatureCollection", features };
+      }
+
+      function ensureSitesLayers() {
+        if (map.getSource("sites")) return;
+        map.addSource("sites", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addLayer({
+          id: "sites-fill", type: "fill", source: "sites",
+          filter: ["==", ["geometry-type"], "Polygon"],
+          paint: { "fill-color": "#d4603a", "fill-opacity": 0.18 },
+          layout: { visibility: state.sitesOn ? "visible" : "none" },
+        });
+        map.addLayer({
+          id: "sites-line", type: "line", source: "sites",
+          filter: ["!=", ["geometry-type"], "Point"],
+          paint: { "line-color": "#d4603a", "line-width": 2 },
+          layout: { visibility: state.sitesOn ? "visible" : "none" },
+        });
+        map.addLayer({
+          id: "sites-point", type: "circle", source: "sites",
+          filter: ["==", ["geometry-type"], "Point"],
+          paint: {
+            "circle-radius": 5,
+            "circle-color": "#d4603a",
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 1.5,
+          },
+          layout: { visibility: state.sitesOn ? "visible" : "none" },
+        });
+
+        const clickable = ["sites-point", "sites-fill", "sites-line"];
+        clickable.forEach((id) => {
+          map.on("click", id, (e) => {
+            const f = e.features?.[0]; if (!f) return;
+            const props = f.properties || {};
+            const name =
+              props.name || props.NAME || props.Name ||
+              props.site_name || props.SiteName || "Research site";
+            const rows = Object.entries(props)
+              .filter(([k, v]) => v != null && v !== "" && k.toLowerCase() !== "name")
+              .slice(0, 10)
+              .map(([k, v]) => `<dt>${k}</dt><dd>${String(v)}</dd>`).join("");
+            const html =
+              `<div class="site-popup">
+                 <h4>${name}</h4>
+                 <dl>${rows}</dl>
+                 <button class="popup-aoi">Use bounding box as AOI</button>
+               </div>`;
+            const popup = new maplibregl.Popup({ closeOnClick: true })
+              .setLngLat(e.lngLat).setHTML(html).addTo(map);
+            const btn = popup.getElement()?.querySelector(".popup-aoi");
+            btn?.addEventListener("click", () => {
+              useFeatureAsAoi(f, [e.lngLat.lng, e.lngLat.lat]);
+              popup.remove();
+            });
+          });
+          map.on("mouseenter", id, () => (map.getCanvas().style.cursor = "pointer"));
+          map.on("mouseleave", id, () => (map.getCanvas().style.cursor = ""));
+        });
+      }
+
+      function coordsBBox(coords) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        const walk = (c) => {
+          if (typeof c[0] === "number" && typeof c[1] === "number") {
+            if (c[0] < minX) minX = c[0]; if (c[0] > maxX) maxX = c[0];
+            if (c[1] < minY) minY = c[1]; if (c[1] > maxY) maxY = c[1];
+          } else { c.forEach(walk); }
+        };
+        walk(coords);
+        return [minX, minY, maxX, maxY];
+      }
+
+      // Even-odd ray-cast; ring is an array of [lon, lat] pairs.
+      function pointInRing(pt, ring) {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const xi = ring[i][0], yi = ring[i][1];
+          const xj = ring[j][0], yj = ring[j][1];
+          const denom = (yj - yi) || 1e-12;
+          const intersects =
+            ((yi > pt[1]) !== (yj > pt[1])) &&
+            (pt[0] < ((xj - xi) * (pt[1] - yi)) / denom + xi);
+          if (intersects) inside = !inside;
+        }
+        return inside;
+      }
+      function pointInPolygon(pt, poly) {
+        // poly = [outerRing, hole1, hole2, ...]
+        if (!poly?.length || !pointInRing(pt, poly[0])) return false;
+        for (let h = 1; h < poly.length; h++) if (pointInRing(pt, poly[h])) return false;
+        return true;
+      }
+
+      // For multi-part geometries, pick the part containing the click.
+      // Falls back to the whole geometry when no part contains the point (e.g.
+      // the click landed near but not inside, or the geometry is a line/point).
+      function coordsForClick(geom, clickPt) {
+        if (!geom) return null;
+        if (geom.type === "Polygon") return geom.coordinates;
+        if (geom.type === "MultiPolygon") {
+          if (clickPt) {
+            for (const poly of geom.coordinates) {
+              if (pointInPolygon(clickPt, poly)) return poly;
+            }
+          }
+          return geom.coordinates; // fallback
+        }
+        return geom.coordinates;
+      }
+
+      function useFeatureAsAoi(feature, clickPt) {
+        const coords = coordsForClick(feature.geometry, clickPt);
+        const [minx, miny, maxx, maxy] = coordsBBox(coords);
+        if (![minx, miny, maxx, maxy].every(isFinite)) return;
+        const poly = {
+          type: "Feature", properties: {},
+          geometry: {
+            type: "Polygon",
+            coordinates: [[[minx,miny],[maxx,miny],[maxx,maxy],[minx,maxy],[minx,miny]]],
+          },
+        };
+        setAoi(poly);
+        fetchStats();
+      }
+      function ensureSitesOnTop() {
+        ["sites-fill", "sites-line", "sites-point"].forEach((id) => {
+          if (map.getLayer(id)) map.moveLayer(id);
+        });
+      }
+      function setSitesVisibility(on) {
+        ["sites-fill", "sites-line", "sites-point"].forEach((id) => {
+          if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+        });
+      }
+
+      // ---------- active layer actions ----------
+      function addActive(catalogId) {
+        const item = catalogItem(catalogId);
+        if (!item) return;
+        if (state.active.some((l) => l.catalogId === catalogId)) return;
+        const lyr = {
+          uid: nextUid++,
+          catalogId,
+          visible: true,
+          opacity: 0.85,
+          colormap: item.default_colormap || "viridis",
+          rescale: item.default_rescale || "0,1",
+          year: item.kind === "timeseries" ? (item.default_year ?? item.years[0]) : null,
+          mode: item.kind === "multiband" ? (item.default_mode || "rgb") : null,
+          bidx: item.kind === "multiband" ? (item.default_bidx || [1, 2, 3]).slice() : null,
+        };
+        state.active.unshift(lyr);
+        addMapLayer(lyr);
+        reorderMapLayers();
+        ensureAoiOnTop();
+        state.expandedUid = lyr.uid;
+        if (state.active.length === 1) map.fitBounds(item.bbox, { padding: 40, duration: 600 });
+        renderAll();
+        if (state.aoi) fetchStats();
+      }
+      function removeActive(uid) {
+        const idx = state.active.findIndex((l) => l.uid === uid);
+        if (idx < 0) return;
+        state.active.splice(idx, 1);
+        removeMapLayer(uid);
+        if (state.expandedUid === uid) state.expandedUid = state.active[0]?.uid ?? null;
+        renderAll();
+        if (state.aoi) fetchStats();
+      }
+      function toggleVisibility(uid) {
+        const lyr = state.active.find((l) => l.uid === uid);
+        if (!lyr) return;
+        lyr.visible = !lyr.visible;
+        map.setLayoutProperty(mapLayerId(uid), "visibility", lyr.visible ? "visible" : "none");
+        renderActive();
+        renderMapLegend();
+        updateAoiDownloads();
+        if (state.aoi) fetchStats();
+        updateHash();
+      }
+      function moveLayer(uid, dir) {
+        const i = state.active.findIndex((l) => l.uid === uid);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= state.active.length) return;
+        [state.active[i], state.active[j]] = [state.active[j], state.active[i]];
+        reorderMapLayers();
+        ensureAoiOnTop();
+        renderActive();
+        renderMapLegend();
+        updateAoiDownloads();
+        if (state.aoi) fetchStats();
+        updateHash();
+      }
+      function setExpanded(uid) {
+        const sameClosed = state.expandedUid === uid;
+        state.expandedUid = sameClosed ? null : uid;
+        renderActive();
+        if (!sameClosed && state.aoi) fetchStats();
+        updateAoiDownloads();
+        updateHash();
+      }
+
+      // ---------- catalog UI ----------
+      function renderCatalog() {
+        const root = document.getElementById("catalog");
+        const empty = document.getElementById("catalogEmpty");
+        const q = state.catSearch.trim().toLowerCase();
+        const total = state.catalog.items.length;
+        document.getElementById("catCount").textContent = q ? "" : `${total} total`;
+        root.innerHTML = "";
+        if (!q) {
+          empty.hidden = false;
+          empty.textContent = `Type to search ${total} layer${total === 1 ? "" : "s"}.`;
+          return;
+        }
+        const items = state.catalog.items.filter((it) =>
+          it.title.toLowerCase().includes(q) ||
+          (it.description || "").toLowerCase().includes(q) ||
+          it.id.toLowerCase().includes(q) ||
+          (it.kind || "").toLowerCase().includes(q)
+        );
+        document.getElementById("catCount").textContent = `${items.length}/${total}`;
+        if (items.length === 0) {
+          empty.hidden = false; empty.textContent = "No matches."; return;
+        }
+        empty.hidden = true;
+        items.forEach((it) => {
+          const added = state.active.some((l) => l.catalogId === it.id);
+          const el = document.createElement("div");
+          el.className = "cat-item" + (added ? " added" : "");
+          el.innerHTML = `
+            <div class="cat-item-row">
+              <div class="cat-item-body">
+                <div class="t">${it.title}</div>
+                <div class="d">${it.description || ""}</div>
+              </div>
+              <button>${added ? "added" : "+ add"}</button>
+            </div>`;
+          const btn = el.querySelector("button");
+          btn.disabled = added;
+          if (!added) btn.onclick = () => addActive(it.id);
+          root.appendChild(el);
+        });
+      }
+
+      const catSearchEl = document.getElementById("catSearch");
+      const catClearEl = document.getElementById("catClear");
+      catSearchEl.addEventListener("input", (e) => {
+        state.catSearch = e.target.value;
+        catClearEl.hidden = !state.catSearch;
+        renderCatalog();
+      });
+      catClearEl.addEventListener("click", () => {
+        state.catSearch = ""; catSearchEl.value = "";
+        catClearEl.hidden = true; renderCatalog(); catSearchEl.focus();
+      });
+
+      // ---------- active layer UI (with inline expandable styling + time) ----------
+      function renderActive() {
+        const root = document.getElementById("active");
+        const empty = document.getElementById("activeEmpty");
+        document.getElementById("actCount").textContent = state.active.length || "";
+        root.innerHTML = "";
+        empty.hidden = state.active.length > 0;
+        state.active.forEach((lyr, i) => {
+          const item = catalogItem(lyr.catalogId);
+          const isExpanded = lyr.uid === state.expandedUid;
+          const el = document.createElement("div");
+          el.className = "act-item" + (isExpanded ? " expanded" : "");
+          el.innerHTML = `
+            <div class="act-row">
+              <span class="grip" title="drag to reorder">⋮⋮</span>
+              <button data-act="vis" class="${lyr.visible ? "" : "vis-off"}" title="toggle visibility">${lyr.visible ? "👁" : "◌"}</button>
+              <span class="t" title="${item.title}">${item.title}</span>
+              <button data-act="rm" title="remove">✕</button>
+              <button data-act="toggle" title="${isExpanded ? "collapse" : "expand"}">${isExpanded ? "▾" : "▸"}</button>
+            </div>
+            ${isExpanded ? renderActBodyHTML(lyr, item) : ""}`;
+
+          el.draggable = true;
+          el.dataset.uid = String(lyr.uid);
+          el.addEventListener("dragstart", (ev) => {
+            dragUid = lyr.uid;
+            ev.dataTransfer.effectAllowed = "move";
+            try { ev.dataTransfer.setData("text/plain", String(lyr.uid)); } catch {}
+            el.classList.add("dragging");
+          });
+          el.addEventListener("dragover", (ev) => {
+            if (dragUid == null || dragUid === lyr.uid) return;
+            ev.preventDefault();
+            ev.dataTransfer.dropEffect = "move";
+            const r = el.getBoundingClientRect();
+            const after = ev.clientY - r.top > r.height / 2;
+            el.classList.toggle("drag-over", !after);
+            el.classList.toggle("drag-over-after", after);
+          });
+          el.addEventListener("dragleave", () => {
+            el.classList.remove("drag-over", "drag-over-after");
+          });
+          el.addEventListener("drop", (ev) => {
+            ev.preventDefault();
+            const after = el.classList.contains("drag-over-after");
+            el.classList.remove("drag-over", "drag-over-after");
+            dropOnto(lyr.uid, after);
+          });
+          el.addEventListener("dragend", () => {
+            el.classList.remove("dragging");
+            document.querySelectorAll(".act-item.drag-over,.act-item.drag-over-after")
+              .forEach((e) => e.classList.remove("drag-over", "drag-over-after"));
+            dragUid = null;
+          });
+
+          el.querySelector(".act-row").onclick = (ev) => {
+            const b = ev.target.closest("button");
+            if (!b) { setExpanded(lyr.uid); return; }
+            ev.stopPropagation();
+            const act = b.dataset.act;
+            if (act === "vis") toggleVisibility(lyr.uid);
+            else if (act === "rm") removeActive(lyr.uid);
+            else if (act === "toggle") setExpanded(lyr.uid);
+          };
+
+          if (isExpanded) wireActBody(el, lyr, item);
+          root.appendChild(el);
+        });
+        renderCatalog();
+        renderMapLegend();
+      }
+
+      function renderActBodyHTML(lyr, item) {
+        const isTs = item.kind === "timeseries";
+        const isMb = item.kind === "multiband";
+        const isRgbLike = item.kind === "rgb" || (isMb && lyr.mode === "rgb");
+        const cmapGradient = (name) => `linear-gradient(to right, ${(COLORMAPS[name] || COLORMAPS.viridis).join(",")})`;
+        const cmapPickerHTML = isRgbLike
+          ? `<div class="cmap-picker-btn" disabled style="background:#333942;">(RGB composite)<span class="chev"></span></div>`
+          : `<div class="cmap-picker" data-k="cmapPicker">
+              <div class="cmap-picker-btn" style="background:${cmapGradient(lyr.colormap)};">
+                <span>${lyr.colormap}</span><span class="chev">▾</span>
+              </div>
+              <div class="cmap-picker-menu">
+                ${SINGLEBAND_CMAPS.map((c) =>
+                  `<div class="cmap-picker-option ${c === lyr.colormap ? "selected" : ""}" data-cmap="${c}" style="background:${cmapGradient(c)};">${c}</div>`
+                ).join("")}
+              </div>
+            </div>`;
+        const bandOpts = (selected) => item.bands?.map(
+          (b) => `<option value="${b.idx}" ${+b.idx === +selected ? "selected" : ""}>${b.idx}: ${b.name}</option>`
+        ).join("") || "";
+
+        let bandBlock = "";
+        if (isMb) {
+          if (lyr.mode === "rgb") {
+            const [r, g, b] = lyr.bidx || item.default_bidx || [1, 2, 3];
+            bandBlock = `
+              <label>Display mode</label>
+              <select data-k="mode">
+                <option value="rgb" selected>RGB composite</option>
+                <option value="single">Single band</option>
+              </select>
+              <label>Red band</label>   <select data-k="bR">${bandOpts(r)}</select>
+              <label>Green band</label> <select data-k="bG">${bandOpts(g)}</select>
+              <label>Blue band</label>  <select data-k="bB">${bandOpts(b)}</select>`;
+          } else {
+            const only = (lyr.bidx && lyr.bidx[0]) || item.bands[0].idx;
+            bandBlock = `
+              <label>Display mode</label>
+              <select data-k="mode">
+                <option value="rgb">RGB composite</option>
+                <option value="single" selected>Single band</option>
+              </select>
+              <label>Band</label>
+              <select data-k="bSingle">${bandOpts(only)}</select>`;
+          }
+        }
+
+        return `<div class="act-body">
+          ${bandBlock}
+          <label>Colormap</label>
+          ${cmapPickerHTML}
+          <label>Rescale (min,max)</label>
+          <input data-k="rescale" type="text" value="${lyr.rescale}" />
+          <label>Opacity <span class="value">${Math.round(lyr.opacity * 100)}%</span></label>
+          <input data-k="opacity" type="range" min="0" max="100" value="${Math.round(lyr.opacity * 100)}" />
+          ${isTs ? `
+            <label>Year <span class="value" data-role="yearLabel">${lyr.year}</span></label>
+            <input data-k="year" type="range" min="0" max="${item.years.length - 1}"
+                   step="1" value="${item.years.indexOf(lyr.year)}" />
+            <div class="time-nav">
+              <button data-k="prev">◀ prev</button>
+              <button data-k="next">next ▶</button>
+            </div>
+          ` : ""}
+        </div>`;
+      }
+
+      function wireActBody(rootEl, lyr, item) {
+        const body = rootEl.querySelector(".act-body");
+        body.addEventListener("click", (ev) => ev.stopPropagation());
+
+        const reRenderRow = () => {
+          reloadMapLayer(lyr);
+          renderMapLegend();
+          if (state.aoi) fetchStats();
+          updateAoiDownloads();
+          updateHash();
+          renderActive(); // re-render this row so band controls match new mode
+        };
+
+        body.querySelector('[data-k="mode"]')?.addEventListener("change", (e) => {
+          lyr.mode = e.target.value;
+          if (lyr.mode === "rgb") {
+            lyr.bidx = (lyr.bidx && lyr.bidx.length === 3) ? lyr.bidx : (item.default_bidx || [1, 2, 3]).slice();
+          } else {
+            lyr.bidx = [ (lyr.bidx && lyr.bidx[0]) || item.bands[0].idx ];
+          }
+          reRenderRow();
+        });
+        const wireBand = (sel, i) => {
+          body.querySelector(`[data-k="${sel}"]`)?.addEventListener("change", (e) => {
+            lyr.bidx[i] = +e.target.value;
+            reloadMapLayer(lyr);
+            renderMapLegend();
+            if (state.aoi) fetchStats();
+            updateAoiDownloads();
+            updateHash();
+          });
+        };
+        wireBand("bR", 0); wireBand("bG", 1); wireBand("bB", 2);
+        body.querySelector('[data-k="bSingle"]')?.addEventListener("change", (e) => {
+          lyr.bidx = [+e.target.value];
+          reloadMapLayer(lyr);
+          renderMapLegend();
+          if (state.aoi) fetchStats();
+          updateAoiDownloads();
+          updateHash();
+        });
+
+        const picker = body.querySelector('[data-k="cmapPicker"]');
+        if (picker) {
+          const btn = picker.querySelector(".cmap-picker-btn");
+          btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const opening = !picker.classList.contains("open");
+            document.querySelectorAll(".cmap-picker.open").forEach((p) => p.classList.remove("open"));
+            if (opening) picker.classList.add("open");
+          });
+          picker.querySelectorAll(".cmap-picker-option").forEach((opt) => {
+            opt.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              lyr.colormap = opt.dataset.cmap;
+              picker.classList.remove("open");
+              // Update the picker button immediately for responsiveness.
+              btn.querySelector("span").textContent = lyr.colormap;
+              btn.style.background = `linear-gradient(to right, ${(COLORMAPS[lyr.colormap] || COLORMAPS.viridis).join(",")})`;
+              picker.querySelectorAll(".cmap-picker-option").forEach((o) =>
+                o.classList.toggle("selected", o.dataset.cmap === lyr.colormap)
+              );
+              reloadMapLayer(lyr);
+              renderMapLegend();
+              if (state.aoi) fetchStats();
+              updateAoiDownloads();
+              updateHash();
+            });
+          });
+        }
+        body.querySelector('[data-k="rescale"]')?.addEventListener("change", (e) => {
+          lyr.rescale = e.target.value;
+          reloadMapLayer(lyr);
+          renderMapLegend();
+          if (state.aoi) fetchStats();
+          updateAoiDownloads();
+          updateHash();
+        });
+        body.querySelector('[data-k="opacity"]')?.addEventListener("input", (e) => {
+          lyr.opacity = (+e.target.value) / 100;
+          body.querySelector('label .value').textContent = `${+e.target.value}%`;
+          map.setPaintProperty(mapLayerId(lyr.uid), "raster-opacity", lyr.opacity);
+          updateHash();
+        });
+
+        if (item.kind === "timeseries") {
+          const yearSlider = body.querySelector('[data-k="year"]');
+          const yearLabel = body.querySelector('[data-role="yearLabel"]');
+          yearSlider.addEventListener("input", (e) => {
+            lyr.year = item.years[+e.target.value];
+            yearLabel.textContent = lyr.year;
+            reloadMapLayer(lyr);
+            renderMapLegend();
+            if (state.aoi) fetchStats();
+            updateAoiDownloads();
+            updateHash();
+          });
+          body.querySelector('[data-k="prev"]').addEventListener("click", () => {
+            yearSlider.value = Math.max(0, +yearSlider.value - 1);
+            yearSlider.dispatchEvent(new Event("input"));
+          });
+          body.querySelector('[data-k="next"]').addEventListener("click", () => {
+            yearSlider.value = Math.min(+yearSlider.max, +yearSlider.value + 1);
+            yearSlider.dispatchEvent(new Event("input"));
+          });
+        }
+      }
+
+      // ---------- floating map legend ----------
+      function renderMapLegend() {
+        const root = document.getElementById("mapLegend");
+        const entries = state.active.filter((lyr) => {
+          if (!lyr.visible) return false;
+          const item = catalogItem(lyr.catalogId);
+          if (item.kind === "rgb") return false;
+          if (item.kind === "multiband" && lyr.mode === "rgb") return false;
+          return true; // singleband / timeseries / multiband-single
+        });
+        if (entries.length === 0) { root.className = "empty"; root.innerHTML = ""; return; }
+        root.className = "";
+        root.innerHTML = entries.map((lyr) => {
+          const item = catalogItem(lyr.catalogId);
+          const [mn, mx] = lyr.rescale.split(",");
+          const stops = COLORMAPS[lyr.colormap] || COLORMAPS.viridis;
+          const gradient = `linear-gradient(to right, ${stops.join(",")})`;
+          const yearBit = lyr.year != null ? ` · ${lyr.year}` : "";
+          return `<div class="legend-entry">
+            <div class="lt">${item.title}</div>
+            <div class="lmeta">${lyr.colormap}${yearBit}${item.units ? ` · ${item.units}` : ""}</div>
+            <div class="bar" style="background:${gradient}"></div>
+            <div class="labels"><span>${mn}</span><span>${mx}</span></div>
+          </div>`;
+        }).join("");
+      }
+
+      // ---------- AOI ----------
+      const aoiBtn = document.getElementById("aoiBtn");
+      const mapEl = document.getElementById("map");
+      let aoiStart = null, aoiRectEl = null;
+
+      function updateAoiBtn() {
+        if (state.aoiArmed) {
+          aoiBtn.textContent = "Drag on map — click to cancel";
+          aoiBtn.style.background = "#ff8b5a";
+        } else if (state.aoi) {
+          aoiBtn.textContent = "Clear Area of Interest";
+          aoiBtn.style.background = "";
+        } else {
+          aoiBtn.textContent = "Draw an Area of Interest";
+          aoiBtn.style.background = "";
+        }
+      }
+      function setArmed(on) {
+        state.aoiArmed = on;
+        if (on) { map.dragPan.disable(); map.boxZoom.disable(); map.getCanvas().style.cursor = "crosshair"; }
+        else {
+          map.dragPan.enable(); map.boxZoom.enable(); map.getCanvas().style.cursor = "";
+          if (aoiRectEl) { aoiRectEl.remove(); aoiRectEl = null; }
+          aoiStart = null;
+        }
+        updateAoiBtn();
+      }
+      aoiBtn.addEventListener("click", () => {
+        if (state.aoiArmed) { setArmed(false); return; }
+        if (state.aoi) { setAoi(null); return; }
+        setArmed(true);
+      });
+
+      map.on("mousedown", (e) => {
+        if (!state.aoiArmed) return;
+        e.preventDefault();
+        const r = mapEl.getBoundingClientRect();
+        aoiStart = {
+          x: e.originalEvent.clientX - r.left,
+          y: e.originalEvent.clientY - r.top,
+          lngLat: e.lngLat,
+        };
+        aoiRectEl = document.createElement("div");
+        aoiRectEl.className = "aoi-rect";
+        aoiRectEl.style.left = aoiStart.x + "px";
+        aoiRectEl.style.top = aoiStart.y + "px";
+        mapEl.appendChild(aoiRectEl);
+      });
+      map.on("mousemove", (e) => {
+        if (!aoiStart || !aoiRectEl) return;
+        const r = mapEl.getBoundingClientRect();
+        const x = e.originalEvent.clientX - r.left;
+        const y = e.originalEvent.clientY - r.top;
+        aoiRectEl.style.left = Math.min(x, aoiStart.x) + "px";
+        aoiRectEl.style.top = Math.min(y, aoiStart.y) + "px";
+        aoiRectEl.style.width = Math.abs(x - aoiStart.x) + "px";
+        aoiRectEl.style.height = Math.abs(y - aoiStart.y) + "px";
+      });
+      map.on("mouseup", async (e) => {
+        if (!aoiStart) return;
+        const start = aoiStart.lngLat;
+        const end = e.lngLat;
+        aoiStart = null;
+        if (aoiRectEl) { aoiRectEl.remove(); aoiRectEl = null; }
+        setArmed(false);
+        const minx = Math.min(start.lng, end.lng);
+        const maxx = Math.max(start.lng, end.lng);
+        const miny = Math.min(start.lat, end.lat);
+        const maxy = Math.max(start.lat, end.lat);
+        const statsEl = document.getElementById("stats");
+        if (maxx - minx < 1e-5 || maxy - miny < 1e-5) {
+          statsEl.hidden = false; statsEl.textContent = "AOI too small — try a larger drag."; return;
+        }
+        const poly = {
+          type: "Feature", properties: {},
+          geometry: { type: "Polygon", coordinates: [[[minx,miny],[maxx,miny],[maxx,maxy],[minx,maxy],[minx,miny]]] },
+        };
+        delete statsEl.dataset.populated;
+        setAoi(poly);
+        await fetchStats();
+      });
+
+      function ensureAoiLayer() {
+        if (!map.getSource("aoi")) {
+          map.addSource("aoi", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+          map.addLayer({ id: "aoi-fill", type: "fill", source: "aoi",
+            paint: { "fill-color": "#d4603a", "fill-opacity": 0.15 } });
+          map.addLayer({ id: "aoi-line", type: "line", source: "aoi",
+            paint: { "line-color": "#d4603a", "line-width": 2, "line-dasharray": [2,2] } });
+        }
+      }
+      function ensureAoiOnTop() {
+        ensureAoiLayer();
+        if (map.getLayer("aoi-fill")) map.moveLayer("aoi-fill");
+        if (map.getLayer("aoi-line")) map.moveLayer("aoi-line");
+        ensureReferenceOnTop();
+      }
+      function setAoi(feature) {
+        ensureAoiLayer();
+        state.aoi = feature;
+        const data = feature ? { type: "FeatureCollection", features: [feature] } : { type: "FeatureCollection", features: [] };
+        map.getSource("aoi").setData(data);
+        const statsEl = document.getElementById("stats");
+        const statsEmpty = document.getElementById("statsEmpty");
+        if (!feature) { statsEl.hidden = true; statsEl.innerHTML = ""; statsEmpty.hidden = false; }
+        else { statsEmpty.hidden = true; }
+        updateAoiDownloads();
+        updateAoiBtn();
+      }
+
+      function aoiBbox() {
+        if (!state.aoi) return null;
+        const ring = state.aoi.geometry.coordinates[0];
+        const xs = ring.map((p) => p[0]);
+        const ys = ring.map((p) => p[1]);
+        return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+      }
+
+      function cogBasename(url) {
+        try {
+          const path = new URL(url).pathname;
+          const name = path.split("/").pop() || "subset";
+          return name.replace(/\.(tif|tiff)$/i, "");
+        } catch { return "subset"; }
+      }
+
+      async function downloadSubset(format) {
+        const lyr = targetLayer();
+        if (!state.aoi || !lyr) return;
+        const item = catalogItem(lyr.catalogId);
+        const bbox = aoiBbox();
+        const bboxPath = bbox.map((n) => n.toFixed(6)).join(",");
+        const cogUrl = resolveCogUrl(lyr);
+        const base = cogBasename(cogUrl);
+        const filename = `${base}_AOI_subset.${format}`;
+
+        const u = new URL(`${TITILER}/cog/bbox/${bboxPath}.${format}`);
+        u.searchParams.set("url", cogUrl);
+        if (format === "png") {
+          u.searchParams.set("rescale", lyr.rescale);
+          const spec = renderSpec(lyr, item);
+          spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
+          if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", lyr.colormap);
+        }
+
+        const info = document.getElementById("dlInfo");
+        const baseInfo = info.dataset.base || info.textContent;
+        info.dataset.base = baseInfo;
+        info.textContent = `${baseInfo} · fetching…`;
+        try {
+          const resp = await fetch(u.toString());
+          if (!resp.ok) throw new Error(await resp.text());
+          const blob = await resp.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+          const kb = blob.size / 1024;
+          const size = kb > 1024 ? (kb / 1024).toFixed(1) + " MB" : kb.toFixed(0) + " KB";
+          info.textContent = `${baseInfo} · ${filename} (${size})`;
+        } catch (err) {
+          info.textContent = `${baseInfo} · error: ${err.message}`;
+        }
+      }
+
+      function updateAoiDownloads() {
+        const wrap = document.getElementById("aoiDownloads");
+        const empty = document.getElementById("aoiDownloadsEmpty");
+        const info = document.getElementById("dlInfo");
+        const lyr = targetLayer();
+        if (!state.aoi || !lyr) {
+          wrap.hidden = true;
+          empty.hidden = false;
+          empty.textContent = state.aoi
+            ? "No visible layer — turn one on to enable subset downloads."
+            : "Draw an AOI to enable subset downloads.";
+          return;
+        }
+        wrap.hidden = false;
+        empty.hidden = true;
+        const item = catalogItem(lyr.catalogId);
+        const bbox = aoiBbox();
+
+        const [minx, miny, maxx, maxy] = bbox;
+        const midLat = ((miny + maxy) / 2) * Math.PI / 180;
+        const kmPerDegLat = 111.32;
+        const kmPerDegLon = kmPerDegLat * Math.cos(midLat);
+        const areaKm2 = (maxx - minx) * kmPerDegLon * (maxy - miny) * kmPerDegLat;
+        const yearBit = lyr.year != null ? ` · ${lyr.year}` : "";
+        const baseInfo =
+          `${item.title}${yearBit} · ` +
+          `${areaKm2 < 1 ? (areaKm2 * 100).toFixed(1) + " ha" : areaKm2.toFixed(2) + " km²"}`;
+        info.textContent = baseInfo;
+        info.dataset.base = baseInfo;
+      }
+
+      function rsdpSnippet(lyr, bbox) {
+        const item = catalogItem(lyr.catalogId);
+        const id = item.rsdp_id || "<CATALOG_ID>";
+        const [minx, miny, maxx, maxy] = bbox;
+        const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
+        let rasterCall = `sdp_get_raster("${id}")`;
+        if (item.kind === "timeseries" && lyr.year != null) {
+          rasterCall = `sdp_get_raster("${id}", years = ${lyr.year})`;
+        }
+        return `# devtools::install_github('rmbl-sdp/rSDP')
+library(rSDP)
+library(terra)
+
+# ${item.title}
+metadata <- sdp_get_metadata("${id}")
+dataset  <- ${rasterCall}
+
+# AOI bbox drawn in the SDP Browser (WGS84 lon/lat).
+# terra::ext() takes (xmin, xmax, ymin, ymax).
+aoi <- vect(
+  ext(${minx.toFixed(6)}, ${maxx.toFixed(6)}, ${miny.toFixed(6)}, ${maxy.toFixed(6)}),
+  crs = "EPSG:4326"
+)
+aoi <- project(aoi, crs(dataset))
+
+# Crop to AOI and save.
+subset <- crop(dataset, aoi)
+writeRaster(subset, "${outName}", overwrite = TRUE)
+`;
+      }
+
+      // Close any open colormap picker when clicking elsewhere.
+      document.addEventListener("click", () => {
+        document.querySelectorAll(".cmap-picker.open").forEach((p) => p.classList.remove("open"));
+      });
+
+      document.getElementById("dlR").addEventListener("click", async (e) => {
+        const lyr = targetLayer();
+        if (!state.aoi || !lyr) return;
+        const code = rsdpSnippet(lyr, aoiBbox());
+        const btn = e.currentTarget;
+        const orig = btn.textContent;
+        try {
+          await navigator.clipboard.writeText(code);
+          btn.textContent = "R code copied";
+        } catch {
+          btn.textContent = "Copy failed";
+        }
+        setTimeout(() => (btn.textContent = orig), 1400);
+      });
+
+      document.getElementById("dlTif").addEventListener("click", () => downloadSubset("tif"));
+      document.getElementById("dlPng").addEventListener("click", () => downloadSubset("png"));
+      async function fetchStats() {
+        const lyr = targetLayer();
+        if (!state.aoi || !lyr) return;
+        const cogUrl = resolveCogUrl(lyr);
+        const statsEl = document.getElementById("stats");
+        statsEl.hidden = false;
+        if (!statsEl.dataset.populated) statsEl.textContent = "Requesting statistics…";
+        try {
+          const resp = await fetch(
+            `${TITILER}/cog/statistics?url=${encodeURIComponent(cogUrl)}`,
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state.aoi) },
+          );
+          if (!resp.ok) throw new Error(await resp.text());
+          const data = await resp.json();
+          renderStats(statsEl, data, lyr);
+          statsEl.dataset.populated = "1";
+        } catch (err) {
+          statsEl.textContent = "Error: " + err.message;
+        }
+      }
+
+      // ---------- stats rendering ----------
+      function fmt(n) {
+        if (n == null || !isFinite(n)) return "–";
+        const a = Math.abs(n);
+        if (a === 0) return "0";
+        if (a >= 1000 || a < 0.01) return n.toExponential(2);
+        return n.toFixed(a >= 10 ? 1 : 3);
+      }
+      function histogramSVG(counts, edges, fillFn) {
+        const w = 260, h = 80, n = counts.length;
+        const maxC = Math.max(...counts, 1);
+        const bw = w / n;
+        const bars = counts.map((c, i) => {
+          const bh = (c / maxC) * (h - 2);
+          const x = i * bw, y = h - bh;
+          return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(bw - 0.5).toFixed(2)}" height="${bh.toFixed(2)}" fill="${fillFn(i, n)}" />`;
+        }).join("");
+        return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${bars}</svg>`;
+      }
+      function renderStats(container, data, lyr) {
+        container.innerHTML = "";
+        const item = catalogItem(lyr.catalogId);
+        let stats = data;
+        if (data && data.type === "Feature") stats = data.properties?.statistics ?? {};
+        else if (data && data.type === "FeatureCollection") stats = data.features?.[0]?.properties?.statistics ?? {};
+        const bandKeys = Object.keys(stats);
+        const [rMin, rMax] = (lyr.rescale || "0,1").split(",").map(parseFloat);
+        const rgbBandColors = { b1: "#e15759", b2: "#59a14f", b3: "#4e79a7" };
+        const header = document.createElement("div");
+        header.style.cssText = "font-size:11px;color:var(--muted);margin-bottom:6px;";
+        header.textContent = `${item.title}` + (lyr.year != null ? `  ·  ${lyr.year}` : "");
+        container.appendChild(header);
+        bandKeys.forEach((bk) => {
+          const s = stats[bk];
+          const wrap = document.createElement("div"); wrap.className = "stats-band";
+          const title = document.createElement("h3"); title.textContent = bk; wrap.appendChild(title);
+          const grid = document.createElement("div"); grid.className = "stats-grid";
+          [
+            ["min", fmt(s.min)], ["max", fmt(s.max)], ["mean", fmt(s.mean)],
+            ["median", fmt(s.median)], ["std", fmt(s.std)],
+            ["count", s.count ? s.count.toLocaleString() : "–"],
+            ["valid %", s.valid_percent != null ? s.valid_percent.toFixed(1) : "–"],
+          ].forEach(([k, v]) => {
+            const kE = document.createElement("div"); kE.className = "k"; kE.textContent = k;
+            const vE = document.createElement("div"); vE.className = "v"; vE.textContent = v;
+            grid.appendChild(kE); grid.appendChild(vE);
+          });
+          wrap.appendChild(grid);
+          if (s.histogram && s.histogram.length === 2) {
+            const [counts, edges] = s.histogram;
+            let fillFn;
+            const isRgbLikeStats = item.kind === "rgb" || (item.kind === "multiband" && lyr.mode === "rgb");
+            if (isRgbLikeStats) {
+              const c = rgbBandColors[bk] || "#d4603a";
+              fillFn = () => c;
+            } else {
+              const cmap = lyr.colormap || "viridis";
+              const lo = isFinite(rMin) ? rMin : edges[0];
+              const hi = isFinite(rMax) ? rMax : edges[edges.length - 1];
+              const span = hi - lo || 1;
+              fillFn = (i) => {
+                const mid = (edges[i] + edges[i + 1]) / 2;
+                return sampleColormap(cmap, (mid - lo) / span);
+              };
+            }
+            const hist = document.createElement("div"); hist.className = "hist";
+            hist.innerHTML = histogramSVG(counts, edges, fillFn);
+            wrap.appendChild(hist);
+            const axis = document.createElement("div"); axis.className = "hist-axis";
+            axis.innerHTML = `<span>${fmt(edges[0])}</span><span>${fmt(edges[edges.length - 1])}</span>`;
+            wrap.appendChild(axis);
+          }
+          container.appendChild(wrap);
+        });
+        const raw = document.createElement("details"); raw.className = "raw";
+        raw.innerHTML = "<summary>raw JSON</summary><pre>" +
+          JSON.stringify(data, null, 2).replace(/</g, "&lt;") + "</pre>";
+        container.appendChild(raw);
+      }
+
+      // ---------- URL hash ----------
+      function updateHash() {
+        const parts = state.active.map((l) => {
+          const p = [
+            `id=${encodeURIComponent(l.catalogId)}`,
+            `c=${encodeURIComponent(l.colormap || "")}`,
+            `r=${encodeURIComponent(l.rescale || "")}`,
+            `o=${Math.round(l.opacity * 100)}`,
+            `v=${l.visible ? 1 : 0}`,
+          ];
+          if (l.year != null) p.push(`y=${l.year}`);
+          if (l.uid === state.expandedUid) p.push("e=1");
+          return p.join("&");
+        });
+        const hash = parts.length ? "#layers=" + parts.map(encodeURIComponent).join(";") : "";
+        history.replaceState(null, "", location.pathname + hash);
+      }
+      function readHash() {
+        if (!location.hash.startsWith("#layers=")) return [];
+        const raw = location.hash.slice("#layers=".length);
+        return raw.split(";").map(decodeURIComponent).map((seg) => {
+          const kv = Object.fromEntries(seg.split("&").map((p) => {
+            const [k, v] = p.split("="); return [k, decodeURIComponent(v ?? "")];
+          }));
+          return kv;
+        });
+      }
+
+      function renderAll() {
+        renderCatalog();
+        renderActive();
+        updateHash();
+      }
+
+      document.getElementById("sitesToggle").addEventListener("change", async (e) => {
+        state.sitesOn = e.target.checked;
+        ensureSitesLayers();
+        const status = document.getElementById("sitesStatus");
+        if (state.sitesOn && !state.sitesData) {
+          status.textContent = "loading…";
+          try {
+            const fc = await fetchResearchSites();
+            state.sitesData = fc;
+            map.getSource("sites").setData(fc);
+            status.textContent = `${fc.features?.length ?? 0} sites`;
+          } catch (err) {
+            status.textContent = "error";
+            console.error("research sites load failed", err);
+            state.sitesOn = false;
+            e.target.checked = false;
+          }
+        }
+        setSitesVisibility(state.sitesOn);
+        ensureSitesOnTop();
+        setTimeout(() => {
+          if (state.sitesOn) status.textContent =
+            state.sitesData ? `${state.sitesData.features?.length ?? 0} sites` : "";
+          else status.textContent = "";
+        }, 2000);
+      });
+
+      document.getElementById("refToggle").addEventListener("change", (e) => {
+        state.referenceOn = e.target.checked;
+        ensureReferenceLayer();
+        REFERENCE_SOURCES.forEach((s) => {
+          if (map.getLayer(s.id)) {
+            map.setLayoutProperty(s.id, "visibility", state.referenceOn ? "visible" : "none");
+          }
+        });
+      });
+
+      (async () => {
+        const resp = await fetch("catalog.json");
+        state.catalog = await resp.json();
+        const saved = readHash();
+        map.on("load", () => {
+          ensureReferenceLayer();
+          if (saved.length) {
+            // Build each layer with its saved settings up front, then add once.
+            // Using addActive + reloadMapLayer here would cause a tile flash
+            // because the swap removes the default-styled layer before
+            // re-adding it with the correct styling.
+            saved.forEach((kv) => {
+              const item = catalogItem(kv.id); if (!item) return;
+              if (state.active.some((l) => l.catalogId === item.id)) return;
+              const lyr = {
+                uid: nextUid++,
+                catalogId: item.id,
+                visible: kv.v !== "0",
+                opacity: kv.o ? Math.max(0, Math.min(1, (+kv.o) / 100)) : 0.85,
+                colormap: kv.c || item.default_colormap || "viridis",
+                rescale: kv.r || item.default_rescale || "0,1",
+                year: item.kind === "timeseries"
+                  ? (kv.y ? +kv.y : (item.default_year ?? item.years[0]))
+                  : null,
+                mode: item.kind === "multiband" ? (item.default_mode || "rgb") : null,
+                bidx: item.kind === "multiband" ? (item.default_bidx || [1, 2, 3]).slice() : null,
+              };
+              state.active.push(lyr); // preserve saved order (top of hash = top of stack)
+              addMapLayer(lyr);
+              if (kv.e === "1") state.expandedUid = lyr.uid;
+            });
+            reorderMapLayers();
+            ensureAoiOnTop();
+            // Zoom to the first restored layer's bbox (closest to initial-add behavior).
+            if (state.active[0]) {
+              const firstItem = catalogItem(state.active[0].catalogId);
+              if (firstItem) map.fitBounds(firstItem.bbox, { padding: 40, duration: 0 });
+            }
+            renderAll();
+          } else {
+            renderAll();
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

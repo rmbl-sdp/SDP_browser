@@ -1,0 +1,91 @@
+# ---------- OS / editor ----------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+*.iml
+.ipynb_checkpoints/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---------- Node / web ----------
+node_modules/
+dist/
+build/
+.parcel-cache/
+.next/
+.cache/
+
+# ---------- Secrets (never commit) ----------
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_dsa
+id_ed25519
+id_ecdsa
+known_hosts
+credentials
+credentials.*
+secrets
+secrets.*
+service-account*.json
+gcp-*.json
+.aws/
+aws-exports.js
+
+# ---------- Terraform ----------
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.example.tfvars
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ---------- Large local data / raster outputs ----------
+# Don't accidentally commit downloaded clips, cached COGs, extract outputs.
+# If you need small test fixtures (<100 KB), use `git add -f path/to/fixture.tif`.
+*.tif
+*.tiff
+*.geotiff
+*.zarr
+*.nc
+*.hdf
+*.hdf5
+*.parquet
+*.feather
+*.laz
+*.las
+*.ply
+local_data/
+extracts/
+scratch/
+
+# ---------- Docker local state ----------
+docker-compose.override.yml
+.docker/
+
+# ---------- Claude Code local cache ----------
+.claude/
+.claude-code/

@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""SDP Browser — pre-commit guardrails.
+
+Blocks a commit when staged changes look dangerous:
+  1. File size > 10 MB (raster outputs, binary dumps, etc.).
+  2. Sensitive filenames (.env, *.pem, id_rsa, credentials*, service-account*.json, …).
+  3. Content matching well-known secret patterns in *added* lines.
+
+Bypass intentionally with:  git commit --no-verify
+(Don't. Fix the underlying issue instead.)
+"""
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+
+SENSITIVE_PATH = re.compile(
+    r"(^|/)("
+    r"\.env(\..*)?"
+    r"|id_(rsa|ed25519|ecdsa|dsa)"
+    r"|.*\.(pem|p12|pfx|key)"
+    r"|credentials(\..*)?"
+    r"|secrets(\..*)?"
+    r"|service-account.*\.json"
+    r")$",
+    re.IGNORECASE,
+)
+
+SECRET_PATTERNS: list[tuple[str, re.Pattern[bytes]]] = [
+    ("private key header",
+     re.compile(rb"-----BEGIN (?:RSA |OPENSSH |EC |DSA |ENCRYPTED )?PRIVATE KEY-----")),
+    ("AWS access key id",
+     re.compile(rb"\bAKIA[0-9A-Z]{16}\b")),
+    ("AWS secret-access-key",
+     re.compile(rb"(?i)aws_secret_access_key\s*=\s*[A-Za-z0-9/+=]{20,}")),
+    ("GitHub PAT (ghp_)",
+     re.compile(rb"\bghp_[0-9A-Za-z]{36}\b")),
+    ("GitHub OAuth token (gho_)",
+     re.compile(rb"\bgho_[0-9A-Za-z]{36}\b")),
+    ("GitHub server-to-server (ghs_)",
+     re.compile(rb"\bghs_[0-9A-Za-z]{36}\b")),
+    ("Slack token",
+     re.compile(rb"\bxox[baprs]-[0-9A-Za-z-]{10,}\b")),
+    ("Google API key",
+     re.compile(rb"\bAIza[0-9A-Za-z_-]{35}\b")),
+    ("quoted credential assignment",
+     re.compile(
+         rb"(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|password)"
+         rb"\s*[:=]\s*[\"'][^\"'\s]{12,}[\"']"
+     )),
+]
+
+
+def sh(cmd: list[str]) -> str:
+    return subprocess.check_output(cmd, text=True).rstrip("\n")
+
+
+def staged_files() -> list[str]:
+    out = sh(["git", "diff", "--cached", "--name-only", "--diff-filter=AM"])
+    return [line for line in out.split("\n") if line]
+
+
+def check_files(paths: list[str]) -> list[str]:
+    fails: list[str] = []
+    for path in paths:
+        if SENSITIVE_PATH.search(path):
+            fails.append(f"sensitive filename: {path}")
+            continue
+        p = Path(path)
+        if not p.is_file():
+            continue
+        size = p.stat().st_size
+        if size > MAX_BYTES:
+            mb = size / (1024 * 1024)
+            fails.append(f"large file ({mb:.1f} MB > 10 MB): {path}")
+    return fails
+
+
+def scan_diff() -> list[str]:
+    try:
+        diff = subprocess.check_output(
+            ["git", "diff", "--cached", "-U0", "--diff-filter=AM", "--no-color"]
+        )
+    except subprocess.CalledProcessError:
+        return []
+    added = b"\n".join(
+        ln for ln in diff.split(b"\n") if ln.startswith(b"+") and not ln.startswith(b"+++")
+    )
+    fails: list[str] = []
+    for label, pat in SECRET_PATTERNS:
+        m = pat.search(added)
+        if m:
+            snippet = m.group(0)[:100].decode("utf-8", errors="replace")
+            fails.append(f"possible secret ({label}): {snippet}")
+    return fails
+
+
+def main() -> int:
+    fails = check_files(staged_files()) + scan_diff()
+    if not fails:
+        return 0
+    sys.stderr.write("pre-commit: refusing to commit the following issues:\n")
+    for msg in fails:
+        sys.stderr.write(f"  ✗ {msg}\n")
+    sys.stderr.write(
+        "\n"
+        "Fix the above, or (only if you're sure) bypass with:\n"
+        "  git commit --no-verify\n"
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
