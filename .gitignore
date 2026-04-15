@@ -51,17 +51,21 @@ gcp-*.json
 aws-exports.js
 
 # ---------- Terraform ----------
+# Commit .terraform.lock.hcl and env-level *.tfvars (non-secret inputs).
 .terraform/
-.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
-*.tfvars
-!*.example.tfvars
+*.auto.tfvars
+*.auto.tfvars.json
 crash.log
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+
+# ---------- App runtime config ----------
+# Emitted at deploy time from Terraform outputs; checked example file documents the shape.
+app/web/config.js
 
 # ---------- Large local data / raster outputs ----------
 # Don't accidentally commit downloaded clips, cached COGs, extract outputs.

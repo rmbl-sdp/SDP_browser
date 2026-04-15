@@ -1,0 +1,66 @@
+{
+  "items": [
+    {
+      "id": "ug-dem-3m",
+      "rsdp_id": "R3D009",
+      "title": "Upper Gunnison — Bare-earth DEM (3 m)",
+      "description": "Bare-earth DEM for the Upper Gunnison Basin derived from 2015 and 2019 LiDAR.",
+      "cog_url": "https://rmbl-sdp.s3.us-east-2.amazonaws.com/data_products/released/release3/UG_dem_3m_v1.tif",
+      "bbox": [-107.25, 38.43, -106.28, 39.10],
+      "kind": "singleband",
+      "default_colormap": "terrain",
+      "default_rescale": "2500,4400",
+      "units": "m"
+    },
+    {
+      "id": "ug-aspect-southness-1m",
+      "rsdp_id": "R3D010",
+      "title": "Upper Gunnison — Aspect Southness (1 m)",
+      "description": "Continuous −1 (north) to +1 (south) aspect component from 2015/2019 LiDAR DEM.",
+      "cog_url": "https://rmbl-sdp.s3.us-east-2.amazonaws.com/data_products/released/release3/UG_dem_aspect_southness_1m_v1.tif",
+      "bbox": [-107.25, 38.43, -106.28, 39.10],
+      "kind": "singleband",
+      "default_colormap": "rdbu_r",
+      "default_rescale": "-1,1",
+      "units": "index"
+    },
+    {
+      "id": "ug-naip-2017",
+      "rsdp_id": "R3D002",
+      "title": "Upper Gunnison — NAIP 2017 (1 m, 4-band)",
+      "description": "4-band NAIP imagery (R, G, B, NIR). Choose RGB composite or a single band with a colormap.",
+      "cog_url": "https://rmbl-sdp.s3.us-east-2.amazonaws.com/data_products/released/release3/UG_rgbn_oct2017_1m_v1.tif",
+      "bbox": [-107.25, 38.43, -106.28, 39.10],
+      "kind": "multiband",
+      "bands": [
+        {"idx": 1, "name": "Red"},
+        {"idx": 2, "name": "Green"},
+        {"idx": 3, "name": "Blue"},
+        {"idx": 4, "name": "NIR"}
+      ],
+      "default_mode": "rgb",
+      "default_bidx": [1, 2, 3],
+      "default_rescale": "0,255",
+      "default_colormap": "greys",
+      "units": "DN"
+    },
+    {
+      "id": "ug-snow-duration-yearly",
+      "rsdp_id": "R4D003",
+      "title": "Upper Gunnison — Snow Duration (yearly, 27 m)",
+      "description": "Number of days of continuous snow cover per water year. 1993–2022.",
+      "url_template": "https://rmbl-sdp.s3.us-east-2.amazonaws.com/data_products/released/release4/UG_snow_length_yearly_27m_v1/UG_snow_length_year_{year}_27m_v1.tif",
+      "years": [
+        1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002,
+        2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012,
+        2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022
+      ],
+      "default_year": 2020,
+      "bbox": [-107.25, 38.43, -106.28, 39.10],
+      "kind": "timeseries",
+      "default_colormap": "ylgnbu",
+      "default_rescale": "0,250",
+      "units": "days"
+    }
+  ]
+}
