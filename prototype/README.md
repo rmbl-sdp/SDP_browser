@@ -15,7 +15,7 @@ The stack is two containers:
 - **TiTiler** (FastAPI + `rio-tiler`) — dynamic COG tile server that reads SDP COGs anonymously from `s3://rmbl-sdp` in `us-east-2`. Exposes `/cog/tiles/…`, `/cog/info`, `/cog/statistics`, `/cog/bbox/…`, etc.
 - **nginx** — serves the static single-page app in `web/` (MapLibre GL JS + ES modules). No build step.
 
-The frontend talks to the live RMBL SDP STAC catalog (`https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1-staging/catalog.json`) for discovery, and to the public ArcGIS Online *ResearchSites_2026_Public_View* FeatureServer for site overlays.
+The frontend talks to the live RMBL SDP STAC catalog (`https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json`) for discovery, and to the public ArcGIS Online *ResearchSites_2026_Public_View* FeatureServer for site overlays.
 
 ## Quick start
 
@@ -144,7 +144,7 @@ prototype/
 ## Troubleshooting
 
 - **"Loading catalog…" never finishes.** Open devtools → Console. The walker logs `collection fetch failed: <url>` and `items failed in <url>` for any node it couldn't read. Fast-fail timeouts are 15 s per fetch. A partial walk still produces a usable catalog; the status line shows the final count.
-- **Some items are in the catalog but missing after a re-walk.** Usually one of: (a) a STAC JSON contains bare `NaN`/`Infinity` tokens from `json.dumps(allow_nan=True)` — we sanitize these before parsing but it's worth fixing upstream; (b) the collection's `data` asset points at a non-COG file; (c) 403 / 404 on the S3 path.
+- **Some items are in the catalog but missing after a re-walk.** Most often (a) the collection's `data` asset points at a non-COG file, or (b) a 403 / 404 on the S3 path. Prior to the `v1` catalog cutover some items were serialized with bare `NaN` / `Infinity` tokens (not valid JSON) and that was the dominant cause; the walker no longer sanitises those, so any such regression will show up as `Unexpected token 'N'` parse errors in the console.
 - **Layers visualize as a flat colour.** The default stretch was off. Click the **auto** button next to Rescale to recompute from a 2nd–98th percentile of the COG.
 - **Research sites toggle shows `error`.** The ArcGIS Online item probably lost its public-sharing setting or the FeatureServer layer id changed. `SITES_QUERY_URL` in `web/index.html` hard-codes layer `14`.
 - **Blank tiles / 500s from TiTiler.** Check `docker compose logs titiler`. Most common cause is a COG with no valid overviews; `rio cogeo validate <url>` in a local Python env will tell you.

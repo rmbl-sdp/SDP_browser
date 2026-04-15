@@ -3,7 +3,7 @@
 A web interface for discovering, exploring, and extracting data from the RMBL Spatial Data Platform (SDP). Complements the [rSDP](https://rmbl-sdp.github.io/rSDP/) R package with a no-code, browser-based workflow for researchers.
 
 - **Owner:** Rocky Mountain Biological Laboratory
-- **Data:** STAC 1.1.0 catalog at `s3://rmbl-sdp/stac/v1-staging/catalog.json` (us-east-2); four sub-catalogs (GMUG, Gothic, Upper East River, Upper Gunnison). Primarily Cloud-Optimized GeoTIFF (COG) rasters. Vector layers via RMBL ArcGIS Online.
+- **Data:** STAC 1.1.0 catalog at `s3://rmbl-sdp/stac/v1/catalog.json` (us-east-2); four sub-catalogs (GMUG, Gothic, Upper East River, Upper Gunnison). Primarily Cloud-Optimized GeoTIFF (COG) rasters. Vector layers via RMBL ArcGIS Online.
 - **Audience:** Scientists and students; dozens of concurrent users with spikes during workshops and field seasons.
 - **Principles:** Open-source, STAC-aligned, cloud-native, same-region with the S3 data, cacheable by default.
 
@@ -157,7 +157,7 @@ bundler, but until then copying is explicit and predictable.
 - **Lint/format:** `ruff` + `black` (Python), `eslint` + `prettier` (TS), `terraform fmt` + `tflint`.
 - **Tests:** `pytest` for services; `vitest` + Playwright for web; `terraform validate` + `tfsec` in CI.
 - **CI:** GitHub Actions via **OIDC** (no long-lived AWS keys). PR: lint, typecheck, unit tests, `terraform plan`. Merge to `main` → build & push Docker image to ECR, `aws ecs update-service --force-new-deployment`, `aws ecs wait services-stable`, CloudFront invalidation. Tag → prod promotion.
-- **Environments:** `staging` (current `v1-staging` catalog) and `prod` (future stable catalog). Separate AWS accounts preferred; separate Terraform workspaces/state at minimum.
+- **Environments:** `staging` (tracks `main`) and `prod` (tracks `v*` tags), both pointed at the same `v1` STAC catalog today. Separate AWS accounts preferred; separate Terraform workspaces/state at minimum.
 - **Observability:** CloudWatch metrics + structured JSON logs; CloudFront real-time logs → S3 → Athena/QuickSight for tile hit-rate analysis; Sentry for frontend errors; ETag on tile responses for debuggability and conditional GETs.
 - **Security:** no auth in v1; all data public. WAF attached at CloudFront with rate limit (start 10 000 req/5 min/IP — match the current bloom_forecast_vis setting) + AWS managed rule sets. ALB security group accepts traffic **only** from the CloudFront managed prefix list. Secrets in AWS Secrets Manager (pgstac creds). CORS allow-list restricted to the CloudFront domain and localhost dev hosts.
 - **Coordinate systems:** serve tiles in Web Mercator (EPSG:3857); retain native CRS (often EPSG:32613) for extractions and downloads. Rely on rio-tiler's transparent reprojection but assert the CRS explicitly where custom processing runs.
@@ -346,14 +346,14 @@ Longer-horizon, not blocking an initial deploy:
 5. **Analytics & privacy posture:** okay to set cookies / use PostHog, or strictly log-based (CloudFront real-time logs → Athena)?
 6. **ArcGIS Online tokens:** the research-sites overlay is public today. If private services get added, we need a server-side proxy, not in-browser tokens.
 7. **Citation & license surfacing:** is there a canonical citation string per product, or derived per-collection?
-8. **STAC catalog cleanup:** two recurring upstream issues — (a) some items are serialized with bare `NaN` / `Infinity` tokens (not valid JSON); (b) some multi-band RGB basemaps (e.g. `BM012 ug-canopy-structure-basemap`, `UG_canopy_basemap_v3.tif`) declare a single `raster:bands` entry even though the underlying COG has 3+ bands. The browser works around both (JSON sanitation + a `/cog/info` probe on add) but the right fix is upstream.
+8. **STAC catalog cleanup (mostly resolved):** the `v1` catalog regeneration addresses the bare `NaN` / `Infinity` token issue (the browser no longer sanitises). A `/cog/info` probe on add is still run as a safety net for any residual multi-band items that under-report `raster:bands`; once the `v1` catalog is confirmed correct across all collections, that probe can be removed.
 
 ---
 
 ## 12. References
 
 - rSDP package — https://rmbl-sdp.github.io/rSDP/
-- Existing STAC catalog — https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1-staging/catalog.json
+- STAC catalog — https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json
 - TiTiler — https://developmentseed.org/titiler/
 - titiler-pgstac — https://github.com/stac-utils/titiler-pgstac
 - stac-fastapi — https://github.com/stac-utils/stac-fastapi

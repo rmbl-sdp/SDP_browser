@@ -74,15 +74,7 @@ async function fetchJson(url, { timeoutMs = 15000 } = {}) {
   try {
     const r = await fetch(url, { signal: ctl.signal });
     if (!r.ok) throw new Error(`${r.status} ${url}`);
-    const text = await r.text();
-    // Some RMBL SDP STAC items were serialized with Python's
-    // json.dumps(allow_nan=True) and contain bare NaN / Infinity tokens
-    // (e.g. "nodata": NaN), which are not valid JSON. Coerce them to null
-    // before parsing; we don't rely on the numeric values.
-    const safe = text
-      .replace(/\bNaN\b/g, "null")
-      .replace(/-?\bInfinity\b/g, "null");
-    return JSON.parse(safe);
+    return await r.json();
   } finally {
     clearTimeout(t);
   }

@@ -9,7 +9,7 @@
 //
 //   window.__SDP_CONFIG__ = {
 //     TITILER: "https://d1abc123.cloudfront.net",
-//     STAC_ROOT: "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1-staging/catalog.json",
+//     STAC_ROOT: "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json",
 //     SITES_QUERY_URL: "https://services8.arcgis.com/.../FeatureServer/14/query",
 //   };
 //
@@ -20,7 +20,7 @@ window.__SDP_CONFIG__ = {
   TITILER: "http://localhost:8000",
 
   // Root STAC catalog JSON. Items are walked lazily from here on first load.
-  STAC_ROOT: "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1-staging/catalog.json",
+  STAC_ROOT: "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json",
 
   // Optional ArcGIS FeatureServer query endpoint for research-site overlays.
   SITES_QUERY_URL: "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026_Public_View/FeatureServer/14/query",

@@ -16,7 +16,7 @@ The static SPA that ships to S3 + CloudFront. Today it is a near-verbatim copy o
 ```js
 window.__SDP_CONFIG__ = {
   TITILER:         "https://<cloudfront-api>",             // tile server base URL
-  STAC_ROOT:       "https://…/stac/v1-staging/catalog.json",
+  STAC_ROOT:       "https://…/stac/v1/catalog.json",
   SITES_QUERY_URL: "https://services8.arcgis.com/…/FeatureServer/14/query",
 };
 ```
