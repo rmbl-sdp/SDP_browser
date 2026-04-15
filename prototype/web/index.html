@@ -25,16 +25,54 @@
         color: var(--text);
         background: var(--bg);
       }
+      :root { --sidebar-width: 340px; }
       #app {
         display: grid;
-        grid-template-columns: 340px 1fr;
+        grid-template-columns: var(--sidebar-width) 1fr;
         height: 100vh;
       }
+      #app.collapsed { --sidebar-width: 0px; }
       #panel {
         background: var(--panel);
         border-right: 1px solid var(--border);
+        overflow-x: hidden;
         overflow-y: auto;
         padding: 16px;
+        position: relative;
+        min-width: 0;
+      }
+      #app.collapsed #panel { padding: 0; border-right: 0; }
+
+      /* Thin drag handle on the right edge of the sidebar */
+      #sidebarResize {
+        position: absolute; top: 0; right: -3px; width: 6px; height: 100%;
+        cursor: ew-resize; z-index: 5;
+        background: transparent;
+      }
+      #sidebarResize:hover, #sidebarResize.dragging {
+        background: linear-gradient(to right, transparent 30%, var(--accent) 50%, transparent 70%);
+      }
+      #app.collapsed #sidebarResize { display: none; }
+
+      /* Collapse / expand toggle straddles the seam */
+      #sidebarToggle {
+        position: fixed; top: 50%;
+        left: var(--sidebar-width);
+        transform: translate(-50%, -50%);
+        z-index: 50;
+        width: 18px; height: 44px; padding: 0;
+        background: var(--panel); color: var(--muted);
+        border: 1px solid var(--border); border-radius: 4px;
+        cursor: pointer; font-size: 13px; line-height: 1;
+        font-weight: 400;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        transition: left 120ms ease, transform 120ms ease;
+      }
+      #sidebarToggle:hover { color: var(--text); border-color: var(--accent); }
+      #app.collapsed ~ #sidebarToggle {
+        left: 0;
+        transform: translate(0, -50%);
+        border-radius: 0 4px 4px 0;
       }
       #panel h1 {
         font-size: 15px;
@@ -396,26 +434,161 @@
       .maplibregl-ctrl-group button {
         background-color: transparent !important;
       }
+      /* ---------- Discovery drawer ---------- */
+      #discoveryDrawer {
+        position: fixed; inset: 0; z-index: 100;
+        background: rgba(20, 23, 28, 0.96);
+        display: flex; flex-direction: column;
+        color: var(--text);
+      }
+      #discoveryDrawer[hidden] { display: none; }
+      .dd-header {
+        display: flex; align-items: center; gap: 12px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+      }
+      .dd-title { font-size: 14px; font-weight: 600; letter-spacing: 0.02em; }
+      .dd-title .count {
+        font-size: 11px; color: var(--muted); font-weight: 400;
+        margin-left: 6px; letter-spacing: 0;
+      }
+      .dd-body {
+        flex: 1; min-height: 0;
+        display: grid; grid-template-columns: 240px 1fr 340px;
+        gap: 0;
+      }
+      .dd-facets, .dd-results, .dd-detail {
+        overflow-y: auto; padding: 14px 16px;
+        background: var(--bg);
+      }
+      .dd-facets { border-right: 1px solid var(--border); }
+      .dd-detail { border-left: 1px solid var(--border); }
+      .dd-facet-group { margin-bottom: 14px; }
+      .dd-facet-group h3 {
+        font-size: 11px; text-transform: uppercase;
+        letter-spacing: 0.08em; color: var(--muted);
+        margin: 0 0 6px;
+      }
+      .dd-facet-item {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 12px; padding: 2px 0;
+        cursor: pointer; user-select: none;
+      }
+      .dd-facet-item:hover { color: var(--accent); }
+      .dd-facet-item input { margin: 0; }
+      .dd-facet-item .cnt {
+        margin-left: auto; color: var(--muted); font-size: 10.5px;
+        font-variant-numeric: tabular-nums;
+      }
+      .dd-facet-reset {
+        background: transparent; color: var(--muted);
+        border: 1px solid var(--border); width: auto;
+        font-size: 10.5px; padding: 3px 6px; font-weight: 400;
+        border-radius: 3px; cursor: pointer;
+      }
+      .dd-facet-reset:hover { color: var(--text); border-color: var(--accent); }
+
+      .dd-results {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 10px;
+        align-content: start;
+      }
+      .dd-card {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 10px 12px;
+        background: var(--panel);
+        cursor: pointer;
+        transition: border-color 120ms;
+        font-size: 12px;
+        display: flex; flex-direction: column; gap: 6px;
+      }
+      .dd-card:hover { border-color: var(--accent); }
+      .dd-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+      .dd-card.added { opacity: 0.7; }
+      .dd-card .t { font-weight: 600; font-size: 12.5px; line-height: 1.3; overflow-wrap: break-word; }
+      .dd-card .d { font-size: 11px; color: var(--muted); line-height: 1.35; }
+      .dd-card .d.clamp {
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .dd-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+      .pill {
+        font-size: 10px; padding: 1px 6px;
+        border-radius: 999px; background: #333942; color: var(--text);
+        white-space: nowrap;
+      }
+      .pill.domain { background: #3a3340; }
+      .pill.release { background: #2e3a40; }
+      .pill.type { background: #3a3a2e; }
+      .pill.kind { background: #2e403a; }
+      .pill.gsd { background: #3a2e2e; }
+
+      .dd-results-empty {
+        grid-column: 1 / -1;
+        color: var(--muted); text-align: center;
+        padding: 40px 20px; font-size: 12px;
+      }
+
+      .dd-detail-empty { color: var(--muted); font-style: italic; font-size: 12px; }
+      .dd-detail h3.title { font-size: 14px; margin: 0 0 8px; }
+      .dd-detail .desc {
+        font-size: 12px; color: var(--text);
+        line-height: 1.45; margin-bottom: 12px;
+        white-space: pre-wrap;
+      }
+      .dd-detail .meta {
+        display: grid; grid-template-columns: auto 1fr;
+        gap: 3px 8px; font-size: 11px; margin-bottom: 14px;
+        font-family: ui-monospace, monospace;
+      }
+      .dd-detail .meta .k { color: var(--muted); }
+      .dd-detail .meta .v { word-break: break-word; }
+      .dd-detail .actions { display: flex; flex-direction: column; gap: 6px; }
+      .dd-detail .actions .add {
+        background: var(--accent); color: #0b1220;
+        border: 0; padding: 8px; border-radius: 4px;
+        font-weight: 600; font-size: 12px; cursor: pointer;
+      }
+      .dd-detail .actions .add:hover { filter: brightness(1.07); }
+      .dd-detail .actions .add.added { background: #333942; color: var(--muted); cursor: default; }
+      .dd-detail .actions .stac-link {
+        display: block; text-align: center;
+        background: #333942; color: var(--text);
+        border: 0; padding: 8px; border-radius: 4px;
+        font-size: 11px; text-decoration: none;
+      }
+      .dd-detail .actions .stac-link:hover { border: 1px solid var(--border); padding: 7px; }
+
+      @media (max-width: 1000px) {
+        .dd-body { grid-template-columns: 220px 1fr; }
+        .dd-detail { display: none; }
+        .dd-detail.open { display: block; position: fixed; right: 0; top: 50px; bottom: 0; width: 340px; border-left: 1px solid var(--border); background: var(--bg); }
+      }
     </style>
   </head>
   <body>
     <div id="app">
       <aside id="panel">
+        <div id="sidebarResize" title="Drag to resize sidebar"></div>
         <h1>
           <a href="https://rmbl.org" target="_blank" rel="noopener">
             <img src="https://rmbl-forecasts.s3.us-east-1.amazonaws.com/flowercast/RMBL_new_logo.png" alt="RMBL" />
           </a>
           <span>SDP Browser — Prototype</span>
         </h1>
-        <div class="subtitle">Local TiTiler + toy catalog. Slow, but honest.</div>
+        <div class="subtitle">Find and Explore Geospatial Data from the Spatial Data Platform</div>
 
-        <h2>Catalog <span class="count" id="catCount"></span></h2>
-        <div class="search-wrap">
-          <input id="catSearch" type="search" placeholder="Search layers…" autocomplete="off" />
-          <button id="catClear" class="search-clear" type="button" hidden aria-label="Clear search">✕</button>
+        <h2>Catalog <span class="count" id="catStatus"></span></h2>
+        <button id="discoverBtn" class="secondary" style="display: flex; align-items: center; gap: 6px; justify-content: center;">
+          <span>🔍</span><span>Discover layers</span>
+        </button>
+        <div id="catalogHint" class="hint" style="margin-top: 6px;">
+          <span id="catalogHintText">Loading catalog…</span>
+          <a id="catalogRefresh" href="#" style="color: var(--accent); margin-left: 6px; display: none;">refresh</a>
         </div>
-        <div id="catalog"></div>
-        <div id="catalogEmpty" class="hint">Type to search the catalog.</div>
 
         <h2>Active layers <span class="count" id="actCount"></span></h2>
         <div id="active"></div>
@@ -452,9 +625,33 @@
         <div id="mapLegend" class="empty"></div>
       </div>
     </div>
+    <button id="sidebarToggle" type="button" aria-label="Toggle sidebar">‹</button>
+
+    <!-- ==== Discovery drawer ==== -->
+    <div id="discoveryDrawer" hidden>
+      <div class="dd-header">
+        <div class="dd-title">Discover layers <span id="ddCount" class="count"></span></div>
+        <div class="search-wrap" style="flex: 1; max-width: 420px;">
+          <input id="ddSearch" type="search" placeholder="Search title, id, description…" autocomplete="off" />
+          <button id="ddSearchClear" class="search-clear" type="button" hidden aria-label="Clear search">✕</button>
+        </div>
+        <button id="ddClose" class="secondary" style="width: auto;">Close</button>
+      </div>
+      <div class="dd-body">
+        <aside class="dd-facets" id="ddFacets"></aside>
+        <section class="dd-results" id="ddResults"></section>
+        <aside class="dd-detail" id="ddDetail">
+          <div class="dd-detail-empty">Select an item to see details.</div>
+        </aside>
+      </div>
+    </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script>
+    <script type="module">
+      import { loadRepo, makeInMemoryRepo, stacBrowserLink, invalidateCache } from "./js/catalog-static.js";
+
+      const STAC_ROOT = "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1-staging/catalog.json";
+
       const TITILER = "http://localhost:8000";
       const SINGLEBAND_CMAPS = [
         "viridis","magma","inferno","cividis","terrain",
@@ -462,12 +659,18 @@
       ];
 
       const state = {
-        catalog: null,
+        catalog: null, // CatalogRepo { all, get, search, facets, fromCache, fallback }
         active: [],
         expandedUid: null, // only one expanded at a time; also serves as "focused"
         aoi: null,
         aoiArmed: false,
-        catSearch: "",
+        discovery: {
+          open: false,
+          q: "",
+          selected: { domain: new Set(), release: new Set(), type: new Set(), gsd: new Set(), bands: new Set() },
+          yearRange: null,
+          detailId: null,
+        },
         referenceOn: true,
         sitesOn: false,
         sitesData: null, // cached FeatureCollection once loaded
@@ -556,7 +759,7 @@
       }
 
       // ---------- active layer helpers ----------
-      function catalogItem(id) { return state.catalog.items.find((i) => i.id === id); }
+      function catalogItem(id) { return state.catalog?.get?.(id) || null; }
       function focused() { return state.active.find((l) => l.uid === state.expandedUid) || null; }
       // The layer that stats/downloads target: topmost visible active layer.
       // Decoupled from `focused()` (which just tracks which row's control panel
@@ -903,6 +1106,69 @@
         });
       }
 
+      // Cache of successful auto-rescale results, keyed by catalog id so
+      // re-adding a layer (or switching years in a time-series) doesn't
+      // re-hit /cog/statistics.
+      const autoRescaleCache = new Map();
+
+      async function autoRescale(lyr, { force = false } = {}) {
+        const item = catalogItem(lyr.catalogId);
+        if (!item) return;
+        // RGB multiband composite is always 0–255 (uint8); skip.
+        if (item.kind === "multiband" && lyr.mode === "rgb") return;
+
+        const cacheKey = item.id;
+        if (!force && autoRescaleCache.has(cacheKey)) {
+          const cached = autoRescaleCache.get(cacheKey);
+          if (cached) applyAutoRescale(lyr, cached);
+          return;
+        }
+
+        const cogUrl = resolveCogUrl(lyr);
+        const u = new URL(`${TITILER}/cog/statistics`);
+        u.searchParams.set("url", cogUrl);
+        u.searchParams.append("p", "2");
+        u.searchParams.append("p", "98");
+        u.searchParams.set("max_size", "1024"); // operate on an overview; fast
+        try {
+          const resp = await fetch(u.toString());
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const data = await resp.json();
+          const bandKeys = Object.keys(data);
+          const first = data[bandKeys[0]];
+          if (!first) throw new Error("no bands in statistics response");
+          const lo = first.percentile_2 ?? first.min;
+          const hi = first.percentile_98 ?? first.max;
+          if (!isFinite(lo) || !isFinite(hi) || lo === hi) {
+            throw new Error(`unusable bounds: ${lo},${hi}`);
+          }
+          const rescale = `${formatBound(lo)},${formatBound(hi)}`;
+          autoRescaleCache.set(cacheKey, rescale);
+          applyAutoRescale(lyr, rescale);
+        } catch (e) {
+          console.debug("autoRescale failed for", item.id, e.message || e);
+          autoRescaleCache.set(cacheKey, null); // don't keep retrying
+        }
+      }
+
+      function formatBound(n) {
+        if (Math.abs(n) >= 100) return Math.round(n).toString();
+        return (+n.toFixed(3)).toString();
+      }
+
+      function applyAutoRescale(lyr, rescale) {
+        // Only override if the user hasn't manually changed the rescale in the
+        // meantime. We detect that by comparing against the descriptor's
+        // default_rescale — if they match, the user hasn't edited.
+        const item = catalogItem(lyr.catalogId);
+        if (lyr.rescale !== item.default_rescale && lyr.rescale !== rescale) return;
+        lyr.rescale = rescale;
+        reloadMapLayer(lyr);
+        renderMapLegend();
+        renderActive();
+        updateHash();
+      }
+
       // ---------- active layer actions ----------
       function addActive(catalogId) {
         const item = catalogItem(catalogId);
@@ -927,6 +1193,10 @@
         if (state.active.length === 1) map.fitBounds(item.bbox, { padding: 40, duration: 600 });
         renderAll();
         if (state.aoi) fetchStats();
+        // Refine the default stretch once if it came from a keyword heuristic
+        // rather than real statistics; hits TiTiler /cog/statistics on an
+        // overview so typical latency is a few hundred ms.
+        if (item.rescale_source !== "stac") autoRescale(lyr);
       }
       function removeActive(uid) {
         const idx = state.active.findIndex((l) => l.uid === uid);
@@ -970,60 +1240,260 @@
         updateHash();
       }
 
-      // ---------- catalog UI ----------
-      function renderCatalog() {
-        const root = document.getElementById("catalog");
-        const empty = document.getElementById("catalogEmpty");
-        const q = state.catSearch.trim().toLowerCase();
-        const total = state.catalog.items.length;
-        document.getElementById("catCount").textContent = q ? "" : `${total} total`;
-        root.innerHTML = "";
-        if (!q) {
-          empty.hidden = false;
-          empty.textContent = `Type to search ${total} layer${total === 1 ? "" : "s"}.`;
+      // ---------- catalog status / discovery entry ----------
+      function updateCatalogStatus() {
+        const status = document.getElementById("catStatus");
+        const hintText = document.getElementById("catalogHintText");
+        const refreshLink = document.getElementById("catalogRefresh");
+        const btn = document.getElementById("discoverBtn");
+        if (!state.catalog) {
+          status.textContent = "";
+          hintText.textContent = "Loading catalog…";
+          refreshLink.style.display = "none";
+          btn.disabled = true;
           return;
         }
-        const items = state.catalog.items.filter((it) =>
-          it.title.toLowerCase().includes(q) ||
-          (it.description || "").toLowerCase().includes(q) ||
-          it.id.toLowerCase().includes(q) ||
-          (it.kind || "").toLowerCase().includes(q)
-        );
-        document.getElementById("catCount").textContent = `${items.length}/${total}`;
-        if (items.length === 0) {
-          empty.hidden = false; empty.textContent = "No matches."; return;
+        const n = state.catalog.all().length;
+        const src = state.catalog.fallback
+          ? "fallback (toy catalog)"
+          : state.catalog.fromCache ? "cached" : "fresh walk";
+        status.textContent = `${n} items · ${src}`;
+        hintText.textContent = "";
+        refreshLink.style.display = state.catalog.fallback ? "none" : "inline";
+        btn.disabled = false;
+      }
+      document.getElementById("discoverBtn").addEventListener("click", openDiscovery);
+      document.getElementById("catalogRefresh").addEventListener("click", async (e) => {
+        e.preventDefault();
+        await invalidateCache();
+        state.catalog = null;
+        document.getElementById("catalogRefresh").style.display = "none";
+        await loadCatalog();
+        renderAll();
+      });
+
+      // ---------- discovery drawer ----------
+      function openDiscovery() {
+        if (!state.catalog) return;
+        state.discovery.open = true;
+        document.getElementById("discoveryDrawer").hidden = false;
+        renderDiscovery();
+        updateHash();
+        setTimeout(() => document.getElementById("ddSearch").focus(), 0);
+      }
+      function closeDiscovery() {
+        state.discovery.open = false;
+        document.getElementById("discoveryDrawer").hidden = true;
+        updateHash();
+      }
+      document.getElementById("ddClose").addEventListener("click", closeDiscovery);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && state.discovery.open) closeDiscovery();
+      });
+
+      const ddSearchEl = document.getElementById("ddSearch");
+      const ddSearchClear = document.getElementById("ddSearchClear");
+      ddSearchEl.addEventListener("input", (e) => {
+        state.discovery.q = e.target.value;
+        ddSearchClear.hidden = !state.discovery.q;
+        renderDiscovery();
+        updateHash();
+      });
+      ddSearchClear.addEventListener("click", () => {
+        state.discovery.q = "";
+        ddSearchEl.value = "";
+        ddSearchClear.hidden = true;
+        ddSearchEl.focus();
+        renderDiscovery();
+        updateHash();
+      });
+
+      const FACET_LABELS = {
+        domain: "Domain",
+        release: "Release",
+        type: "Type",
+        gsd: "Resolution",
+        bands: "Bands",
+      };
+      const FACET_ORDER = {
+        domain: ["UG", "UER", "GT", "GMUG"],
+        release: ["Release5", "Release4", "Release3", "Release2", "Release1", "Basemaps"],
+        gsd: ["≤ 1 m", "1–5 m", "5–10 m", "> 10 m", "unknown"],
+        bands: ["1", "2–3", "4+"],
+      };
+      function orderedFacetValues(key, facetObj) {
+        const preferred = FACET_ORDER[key];
+        const keys = Object.keys(facetObj);
+        if (preferred) {
+          const ranked = preferred.filter((k) => k in facetObj);
+          const extras = keys.filter((k) => !preferred.includes(k)).sort();
+          return [...ranked, ...extras];
         }
-        empty.hidden = true;
-        items.forEach((it) => {
-          const added = state.active.some((l) => l.catalogId === it.id);
-          const el = document.createElement("div");
-          el.className = "cat-item" + (added ? " added" : "");
-          el.innerHTML = `
-            <div class="cat-item-row">
-              <div class="cat-item-body">
-                <div class="t">${it.title}</div>
-                <div class="d">${it.description || ""}</div>
-              </div>
-              <button>${added ? "added" : "+ add"}</button>
-            </div>`;
-          const btn = el.querySelector("button");
-          btn.disabled = added;
-          if (!added) btn.onclick = () => addActive(it.id);
-          root.appendChild(el);
+        return keys.sort((a, b) => facetObj[b] - facetObj[a]);
+      }
+
+      function renderDiscovery() {
+        if (!state.discovery.open || !state.catalog) return;
+        const results = state.catalog.search({
+          q: state.discovery.q,
+          selected: state.discovery.selected,
+          yearRange: state.discovery.yearRange,
+        });
+        document.getElementById("ddCount").textContent =
+          `${results.length} of ${state.catalog.all().length}`;
+        renderDiscoveryFacets(results);
+        renderDiscoveryResults(results);
+        renderDiscoveryDetail();
+      }
+
+      function renderDiscoveryFacets(results) {
+        const root = document.getElementById("ddFacets");
+        const anySelected = Object.values(state.discovery.selected).some((s) => s.size);
+        // Count facets over the currently-filtered result set so users see
+        // how each choice would narrow things. Empty buckets are hidden
+        // unless they're currently selected (so users can uncheck them).
+        const live = aggregateLive(results);
+        const groups = ["domain", "release", "type", "gsd", "bands"];
+        let html = "";
+        if (anySelected) {
+          html += `<button class="dd-facet-reset" data-act="reset-all">Reset all filters</button>`;
+        }
+        for (const key of groups) {
+          const buckets = live[key] || {};
+          const selectedSet = state.discovery.selected[key];
+          const entries = new Set([...Object.keys(buckets), ...selectedSet]);
+          const values = orderedFacetValues(key, Object.fromEntries([...entries].map((k) => [k, buckets[k] || 0])));
+          if (values.length === 0) continue;
+          html += `<div class="dd-facet-group"><h3>${FACET_LABELS[key]}</h3>`;
+          for (const v of values) {
+            const count = buckets[v] || 0;
+            const checked = selectedSet.has(v);
+            html += `<label class="dd-facet-item">
+              <input type="checkbox" data-facet="${key}" data-value="${v.replace(/"/g, "&quot;")}" ${checked ? "checked" : ""} />
+              <span>${v}</span>
+              <span class="cnt">${count}</span>
+            </label>`;
+          }
+          html += `</div>`;
+        }
+        root.innerHTML = html;
+        root.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+          cb.addEventListener("change", () => {
+            const k = cb.dataset.facet, v = cb.dataset.value;
+            const set = state.discovery.selected[k];
+            if (cb.checked) set.add(v); else set.delete(v);
+            renderDiscovery();
+            updateHash();
+          });
+        });
+        root.querySelector('[data-act="reset-all"]')?.addEventListener("click", () => {
+          for (const k of Object.keys(state.discovery.selected)) state.discovery.selected[k].clear();
+          renderDiscovery();
+          updateHash();
         });
       }
 
-      const catSearchEl = document.getElementById("catSearch");
-      const catClearEl = document.getElementById("catClear");
-      catSearchEl.addEventListener("input", (e) => {
-        state.catSearch = e.target.value;
-        catClearEl.hidden = !state.catSearch;
-        renderCatalog();
-      });
-      catClearEl.addEventListener("click", () => {
-        state.catSearch = ""; catSearchEl.value = "";
-        catClearEl.hidden = true; renderCatalog(); catSearchEl.focus();
-      });
+      function aggregateLive(descriptors) {
+        const bucketGsd = (g) => {
+          if (g == null) return "unknown";
+          if (g <= 1) return "≤ 1 m";
+          if (g <= 5) return "1–5 m";
+          if (g <= 10) return "5–10 m";
+          return "> 10 m";
+        };
+        const bucketBands = (n) => {
+          if (!n || n === 1) return "1";
+          if (n <= 3) return "2–3";
+          return "4+";
+        };
+        const f = { domain: {}, release: {}, type: {}, gsd: {}, bands: {} };
+        for (const d of descriptors) {
+          for (const k of ["domain", "release", "type"]) {
+            const v = d[k] || "unspecified";
+            f[k][v] = (f[k][v] || 0) + 1;
+          }
+          const g = bucketGsd(d.gsd);
+          f.gsd[g] = (f.gsd[g] || 0) + 1;
+          const b = bucketBands(d.bandCount);
+          f.bands[b] = (f.bands[b] || 0) + 1;
+        }
+        return f;
+      }
+
+      function renderDiscoveryResults(results) {
+        const root = document.getElementById("ddResults");
+        if (results.length === 0) {
+          root.innerHTML = `<div class="dd-results-empty">No matches. Loosen the filters or clear your search.</div>`;
+          return;
+        }
+        const activeIds = new Set(state.active.map((l) => l.catalogId));
+        root.innerHTML = results.map((d) => {
+          const pills = [];
+          if (d.domain) pills.push(`<span class="pill domain">${d.domain}</span>`);
+          if (d.release) pills.push(`<span class="pill release">${d.release}</span>`);
+          if (d.type) pills.push(`<span class="pill type">${d.type}</span>`);
+          pills.push(`<span class="pill kind">${d.kind}</span>`);
+          if (d.gsd != null) pills.push(`<span class="pill gsd">${d.gsd} m</span>`);
+          const sel = d.id === state.discovery.detailId ? " selected" : "";
+          const added = activeIds.has(d.id) ? " added" : "";
+          return `<div class="dd-card${sel}${added}" data-id="${d.id}">
+            <div class="t">${d.title}</div>
+            <div class="d clamp">${d.description || ""}</div>
+            <div class="dd-pills">${pills.join("")}</div>
+          </div>`;
+        }).join("");
+        root.querySelectorAll(".dd-card").forEach((el) => {
+          el.addEventListener("click", () => {
+            state.discovery.detailId = el.dataset.id;
+            renderDiscovery();
+          });
+        });
+      }
+
+      function renderDiscoveryDetail() {
+        const root = document.getElementById("ddDetail");
+        const id = state.discovery.detailId;
+        const d = id ? state.catalog.get(id) : null;
+        if (!d) {
+          root.innerHTML = `<div class="dd-detail-empty">Select an item to see details.</div>`;
+          return;
+        }
+        const added = state.active.some((l) => l.catalogId === d.id);
+        const stacUrl = d.stacCollectionUrl || d.stacItemUrl;
+        const rows = [
+          ["id", d.id],
+          ["rsdp_id", d.rsdp_id || "—"],
+          ["kind", d.kind],
+          ["domain", d.domain || "—"],
+          ["release", d.release || "—"],
+          ["type", d.type || "—"],
+          ["gsd", d.gsd != null ? `${d.gsd} m` : "—"],
+          ["bands", d.bandCount || 1],
+          ["dtype", d.dtype || "—"],
+          ["temporal", d.temporal?.[0] ? `${d.temporal[0]} → ${d.temporal[1] || "…"}` : "—"],
+          ["CRS (EPSG)", d.epsg || "—"],
+          ["bbox", d.bbox ? d.bbox.map((n) => n.toFixed(3)).join(", ") : "—"],
+        ];
+        const metaHtml = rows
+          .map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`)
+          .join("");
+        const canAdd = d.kind !== "unsupported";
+        root.innerHTML = `
+          <h3 class="title">${d.title}</h3>
+          <div class="desc">${d.description || ""}</div>
+          <div class="meta">${metaHtml}</div>
+          <div class="actions">
+            <button class="add ${added ? "added" : ""}" ${added || !canAdd ? "disabled" : ""}>
+              ${added ? "✓ Already on map" : canAdd ? "Add to Map" : "Unsupported — open in STAC Browser"}
+            </button>
+            ${stacUrl ? `<a class="stac-link" target="_blank" rel="noopener" href="${stacBrowserLink(stacUrl)}">Open in STAC Browser ↗</a>` : ""}
+          </div>`;
+        root.querySelector(".add")?.addEventListener("click", () => {
+          if (added || !canAdd) return;
+          addActive(d.id);
+          closeDiscovery();
+        });
+      }
 
       // ---------- active layer UI (with inline expandable styling + time) ----------
       function renderActive() {
@@ -1093,7 +1563,7 @@
           if (isExpanded) wireActBody(el, lyr, item);
           root.appendChild(el);
         });
-        renderCatalog();
+        renderDiscovery();
         renderMapLegend();
       }
 
@@ -1149,7 +1619,11 @@
           <label>Colormap</label>
           ${cmapPickerHTML}
           <label>Rescale (min,max)</label>
-          <input data-k="rescale" type="text" value="${lyr.rescale}" />
+          <div style="display: flex; gap: 4px;">
+            <input data-k="rescale" type="text" value="${lyr.rescale}" style="flex: 1; min-width: 0;" />
+            <button data-k="autoRescale" title="Auto-stretch from 2nd–98th percentile"
+                    style="width: auto; padding: 4px 6px; font-size: 10px; background: #333942; color: var(--text); font-weight: normal;">auto</button>
+          </div>
           <label>Opacity <span class="value">${Math.round(lyr.opacity * 100)}%</span></label>
           <input data-k="opacity" type="range" min="0" max="100" value="${Math.round(lyr.opacity * 100)}" />
           ${isTs ? `
@@ -1241,6 +1715,13 @@
           if (state.aoi) fetchStats();
           updateAoiDownloads();
           updateHash();
+        });
+        body.querySelector('[data-k="autoRescale"]')?.addEventListener("click", async (e) => {
+          const btn = e.currentTarget;
+          const orig = btn.textContent;
+          btn.disabled = true; btn.textContent = "…";
+          await autoRescale(lyr, { force: true });
+          btn.disabled = false; btn.textContent = orig;
         });
         body.querySelector('[data-k="opacity"]')?.addEventListener("input", (e) => {
           lyr.opacity = (+e.target.value) / 100;
@@ -1654,7 +2135,61 @@ writeRaster(subset, "${outName}", overwrite = TRUE)
       }
 
       // ---------- URL hash ----------
+      // Hash format (top-level `&`-delimited, each value percent-encoded):
+      //   layers=<semicolon-joined layer records>
+      //   view=<lat>,<lng>,<zoom>
+      //   discover=1
+      //   dq=<discovery search>
+      //   df=<k1:v1,v2|k2:v3>  (facet selections)
+      function encodeFacets(selected) {
+        const parts = [];
+        for (const k of ["domain", "release", "type", "gsd", "bands"]) {
+          const s = selected[k];
+          if (s && s.size) {
+            parts.push(`${k}:${[...s].map(encodeURIComponent).join(",")}`);
+          }
+        }
+        return parts.join("|");
+      }
+      function decodeFacets(str) {
+        const out = {
+          domain: new Set(), release: new Set(), type: new Set(),
+          gsd: new Set(), bands: new Set(),
+        };
+        if (!str) return out;
+        for (const g of str.split("|")) {
+          const i = g.indexOf(":");
+          if (i < 0) continue;
+          const k = g.slice(0, i);
+          if (!(k in out)) continue;
+          g.slice(i + 1).split(",").forEach((v) => v && out[k].add(decodeURIComponent(v)));
+        }
+        return out;
+      }
+
+      function writeKv(kv) {
+        const pairs = Object.entries(kv)
+          .filter(([, v]) => v !== undefined && v !== null && v !== "")
+          .map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
+        const hash = pairs.length ? "#" + pairs.join("&") : "";
+        history.replaceState(null, "", location.pathname + location.search + hash);
+      }
+      function readKv() {
+        const h = location.hash.slice(1);
+        if (!h) return {};
+        // Back-compat: older hashes were "#layers=..." (same format) — still parses.
+        return Object.fromEntries(
+          h.split("&").map((seg) => {
+            const i = seg.indexOf("=");
+            return i < 0 ? [seg, ""] : [seg.slice(0, i), decodeURIComponent(seg.slice(i + 1))];
+          }),
+        );
+      }
+
       function updateHash() {
+        const kv = {};
+
+        // Layers
         const parts = state.active.map((l) => {
           const p = [
             `id=${encodeURIComponent(l.catalogId)}`,
@@ -1667,23 +2202,53 @@ writeRaster(subset, "${outName}", overwrite = TRUE)
           if (l.uid === state.expandedUid) p.push("e=1");
           return p.join("&");
         });
-        const hash = parts.length ? "#layers=" + parts.map(encodeURIComponent).join(";") : "";
-        history.replaceState(null, "", location.pathname + hash);
+        if (parts.length) kv.layers = parts.map(encodeURIComponent).join(";");
+
+        // View
+        try {
+          const c = map.getCenter();
+          const z = map.getZoom();
+          if (isFinite(c.lat) && isFinite(c.lng) && isFinite(z)) {
+            kv.view = `${c.lat.toFixed(5)},${c.lng.toFixed(5)},${z.toFixed(2)}`;
+          }
+        } catch {}
+
+        // Discovery
+        if (state.discovery.open) kv.discover = "1";
+        if (state.discovery.q) kv.dq = state.discovery.q;
+        const df = encodeFacets(state.discovery.selected);
+        if (df) kv.df = df;
+
+        writeKv(kv);
       }
+
       function readHash() {
-        if (!location.hash.startsWith("#layers=")) return [];
-        const raw = location.hash.slice("#layers=".length);
-        return raw.split(";").map(decodeURIComponent).map((seg) => {
-          const kv = Object.fromEntries(seg.split("&").map((p) => {
-            const [k, v] = p.split("="); return [k, decodeURIComponent(v ?? "")];
-          }));
-          return kv;
-        });
+        // Returns { layers: [], view, discover, dq, df } where layers is the
+        // array of per-layer kv dicts the boot code already understood.
+        const kv = readKv();
+        const out = { layers: [], view: null, discover: false, dq: "", df: "" };
+        if (kv.layers) {
+          out.layers = kv.layers.split(";").map(decodeURIComponent).map((seg) =>
+            Object.fromEntries(seg.split("&").map((p) => {
+              const [k, v] = p.split("=");
+              return [k, decodeURIComponent(v ?? "")];
+            })),
+          );
+        }
+        if (kv.view) {
+          const [lat, lng, z] = kv.view.split(",").map(Number);
+          if ([lat, lng, z].every(isFinite)) out.view = { center: [lng, lat], zoom: z };
+        }
+        out.discover = kv.discover === "1";
+        out.dq = kv.dq || "";
+        out.df = kv.df || "";
+        return out;
       }
 
       function renderAll() {
-        renderCatalog();
+        updateCatalogStatus();
         renderActive();
+        renderDiscovery();
         updateHash();
       }
 
@@ -1724,18 +2289,117 @@ writeRaster(subset, "${outName}", overwrite = TRUE)
         });
       });
 
+      async function loadCatalog() {
+        updateCatalogStatus();
+        try {
+          state.catalog = await loadRepo({
+            rootUrl: STAC_ROOT,
+            onProgress: ({ done, total, stage }) => {
+              const hintText = document.getElementById("catalogHintText");
+              if (!hintText) return;
+              if (stage === "cache") hintText.textContent = "loaded from cache";
+              else hintText.textContent = `walking catalog: ${done} / ${total} collections`;
+            },
+          });
+        } catch (err) {
+          console.warn("STAC walk failed, using fallback catalog.json:", err);
+          try {
+            const toy = await (await fetch("catalog.json")).json();
+            state.catalog = makeInMemoryRepo(toy.items || [], { fallback: true });
+          } catch (e2) {
+            console.error("fallback catalog load also failed:", e2);
+            state.catalog = makeInMemoryRepo([], { fallback: true });
+          }
+        }
+        updateCatalogStatus();
+      }
+
+      // ---------- sidebar collapse + resize ----------
+      const appEl = document.getElementById("app");
+      const panelEl = document.getElementById("panel");
+      const sidebarToggle = document.getElementById("sidebarToggle");
+      const sidebarResize = document.getElementById("sidebarResize");
+
+      function setSidebarCollapsed(on) {
+        console.debug("[sidebar] collapsed =", on);
+        appEl.classList.toggle("collapsed", on);
+        sidebarToggle.textContent = on ? "›" : "‹";
+        try { localStorage.setItem("sdp-sidebar-collapsed", on ? "1" : "0"); } catch {}
+        requestAnimationFrame(() => {
+          try { map.resize(); } catch (e) { console.warn("map.resize failed:", e); }
+        });
+      }
+      sidebarToggle.addEventListener("click", () => {
+        setSidebarCollapsed(!appEl.classList.contains("collapsed"));
+      });
+
+      // Restore persisted width + collapsed state.
+      try {
+        const savedW = localStorage.getItem("sdp-sidebar-w");
+        if (savedW && /^\d+(\.\d+)?px$/.test(savedW)) {
+          document.documentElement.style.setProperty("--sidebar-width", savedW);
+        }
+        if (localStorage.getItem("sdp-sidebar-collapsed") === "1") {
+          setSidebarCollapsed(true);
+        }
+      } catch {}
+
+      // Drag-to-resize the sidebar. Clamped to [220, 600] px.
+      let dragging = false, dragStartX = 0, dragStartW = 0;
+      sidebarResize.addEventListener("pointerdown", (e) => {
+        if (appEl.classList.contains("collapsed")) return;
+        dragging = true;
+        dragStartX = e.clientX;
+        dragStartW = panelEl.offsetWidth;
+        sidebarResize.classList.add("dragging");
+        document.body.style.cursor = "ew-resize";
+        try { sidebarResize.setPointerCapture(e.pointerId); } catch {}
+        e.preventDefault();
+      });
+      sidebarResize.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        const w = Math.max(220, Math.min(600, dragStartW + (e.clientX - dragStartX)));
+        document.documentElement.style.setProperty("--sidebar-width", `${w}px`);
+      });
+      function endDrag(e) {
+        if (!dragging) return;
+        dragging = false;
+        sidebarResize.classList.remove("dragging");
+        document.body.style.cursor = "";
+        try { sidebarResize.releasePointerCapture(e.pointerId); } catch {}
+        const w = panelEl.offsetWidth;
+        try { localStorage.setItem("sdp-sidebar-w", `${w}px`); } catch {}
+        map.resize();
+      }
+      sidebarResize.addEventListener("pointerup", endDrag);
+      sidebarResize.addEventListener("pointercancel", endDrag);
+
       (async () => {
-        const resp = await fetch("catalog.json");
-        state.catalog = await resp.json();
+        await loadCatalog();
         const saved = readHash();
-        map.on("load", () => {
+
+        // Seed discovery state from hash before any rendering so the drawer
+        // opens with filters already applied.
+        if (saved.dq) {
+          state.discovery.q = saved.dq;
+          const ddSearchEl = document.getElementById("ddSearch");
+          if (ddSearchEl) {
+            ddSearchEl.value = saved.dq;
+            document.getElementById("ddSearchClear").hidden = false;
+          }
+        }
+        if (saved.df) {
+          state.discovery.selected = decodeFacets(saved.df);
+        }
+
+        const onMapReady = () => {
           ensureReferenceLayer();
-          if (saved.length) {
+          if (saved.layers.length) {
             // Build each layer with its saved settings up front, then add once.
             // Using addActive + reloadMapLayer here would cause a tile flash
             // because the swap removes the default-styled layer before
             // re-adding it with the correct styling.
-            saved.forEach((kv) => {
+            saved.layers.forEach((kv) => {
               const item = catalogItem(kv.id); if (!item) return;
               if (state.active.some((l) => l.catalogId === item.id)) return;
               const lyr = {
@@ -1757,16 +2421,25 @@ writeRaster(subset, "${outName}", overwrite = TRUE)
             });
             reorderMapLayers();
             ensureAoiOnTop();
-            // Zoom to the first restored layer's bbox (closest to initial-add behavior).
-            if (state.active[0]) {
-              const firstItem = catalogItem(state.active[0].catalogId);
-              if (firstItem) map.fitBounds(firstItem.bbox, { padding: 40, duration: 0 });
-            }
-            renderAll();
-          } else {
-            renderAll();
           }
-        });
+
+          // View takes precedence over fitBounds: if the user has a saved
+          // pan/zoom, respect it. Otherwise zoom to the first restored layer.
+          if (saved.view) {
+            map.jumpTo({ center: saved.view.center, zoom: saved.view.zoom });
+          } else if (state.active[0]) {
+            const firstItem = catalogItem(state.active[0].catalogId);
+            if (firstItem?.bbox) map.fitBounds(firstItem.bbox, { padding: 40, duration: 0 });
+          }
+
+          if (saved.discover) openDiscovery();
+          renderAll();
+
+          // Start persisting view pans/zooms into the hash now that the
+          // initial view has been applied.
+          map.on("moveend", updateHash);
+        };
+        if (map.loaded()) onMapReady(); else map.on("load", onMapReady);
       })();
     </script>
   </body>
