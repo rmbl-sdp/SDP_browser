@@ -99,39 +99,45 @@ Fargate replaces Lambda in the cost table from the research stage: a 24/7 baseli
 
 ## 3. Repository layout
 
+The actual on-disk layout as of the current `main`. Ticks (✅) mark what is
+built today; stubs (🟡) are planned but not scaffolded; (➖) is deliberately
+deferred to later phases.
+
 ```
 SDP_browser/
 ├── SPEC.md                  # this file
-├── README.md
-├── web/                     # React + Vite + TS frontend
-│   ├── src/
-│   │   ├── components/      # Map, Catalog, Legend, AOI, Extract, Recipe
-│   │   ├── lib/             # stac client, titiler client, arcgis client
-│   │   ├── state/           # zustand store
-│   │   └── routes/          # / · /browse · /map · /extract/:jobId
-│   └── vite.config.ts
-├── infra/                   # Terraform (port structure from bloom_forecast_vis/deployed/terraform)
-│   ├── vpc.tf               # public/private subnets, NAT, S3 gateway endpoint
-│   ├── ecs.tf               # cluster + task definitions (titiler, stac-api, worker)
-│   ├── alb.tf               # internal ALB restricted to CloudFront prefix list
-│   ├── cloudfront.tf        # CDN + WAF + query-string caching
-│   ├── waf.tf
-│   ├── iam.tf               # GH Actions OIDC role, task roles
-│   ├── ecr.tf
-│   ├── rds.tf               # pgstac Postgres (phase 3)
-│   ├── sqs_extraction.tf    # queues + DLQ (phase 3)
-│   └── monitoring.tf
+├── README.md                                                ✅
+├── prototype/                                               ✅ local sandbox
+│   ├── docker-compose.yml   # titiler + web nginx sidecar
+│   ├── titiler/             # Dockerfile + app.py (GDAL env, CORS middleware)
+│   └── web/                 # MapLibre single-page UI + js/idb.js + js/catalog-static.js
+├── app/                                                     ✅ production frontend
+│   ├── README.md
+│   └── web/                 # verbatim copy of prototype/web + runtime config.js shim
+│       └── config.example.js  # committed; real config.js is deploy-time generated
 ├── services/
-│   ├── titiler/             # Docker image: TiTiler + GDAL env tuning
-│   │   ├── Dockerfile       # python:3.12-slim, non-root, GDAL env baked in
-│   │   └── app/             # TiTiler factory config, LRU wrappers, ETag, /health
-│   ├── stac-api/            # stac-fastapi + pgstac (phase 3)
-│   └── extract-worker/      # Python: rioxarray + exactextract + odc-stac
+│   ├── titiler/                                             ✅ Docker image (shared shape with prototype)
+│   ├── stac-api/                                            ➖ stac-fastapi + pgstac (phase 3)
+│   └── extract-worker/                                      ➖ rioxarray + exactextract + odc-stac (phase 3)
+├── infra/                                                   ✅ Terraform
+│   ├── README.md
+│   ├── bootstrap/           # one-shot S3 state bucket + DynamoDB lock
+│   ├── modules/             # network, ecr, alb-internal, ecs-service,
+│   │                        # cloudfront-api, cloudfront-site, waf, iam-github-oidc
+│   └── envs/
+│       ├── staging/         # calls modules with staging inputs; main branch target
+│       └── prod/            # tag v* target, environment-gated in GitHub
 ├── tools/
-│   ├── cog-audit/           # rio cogeo validate runner
-│   └── stac-loader/         # pgstac ingest (phase 3)
-└── .github/workflows/       # OIDC deploy, ECR push, ecs wait services-stable, CF invalidate
+│   ├── cog-audit/                                           🟡 rio cogeo validate runner (phase 0)
+│   └── stac-loader/                                         ➖ pgstac ingest (phase 3)
+├── .github/workflows/                                       ✅ ci.yml, deploy-staging.yml, deploy-prod.yml
+└── .githooks/                                               ✅ pre-commit secret + size guardrails
 ```
+
+`prototype/` stays as the sandbox — changes there don't reach production until
+ported into `app/web/` and `services/titiler/`. `app/web/` currently mirrors
+`prototype/web/` verbatim; the duplication will shrink when we pick up a
+bundler, but until then copying is explicit and predictable.
 
 ---
 
@@ -307,27 +313,40 @@ SDP_browser/
 
 ## 10. Milestones (indicative)
 
-| Phase | Target duration | Dependencies |
-|---|---|---|
-| 0. COG audit | 2–3 weeks | rSDP catalog walk |
-| 1. MVP browser | 6–8 weeks | Phase 0; CDK baseline |
-| 2. AOI extraction (small) | 4–6 weeks | Phase 1 |
-| 3. STAC API + async jobs | 6–8 weeks | Phase 2 |
-| 4. Polish & scale | ongoing | Phase 3 |
+| Phase | Target duration | Dependencies | Status |
+|---|---|---|---|
+| 0. COG audit | 2–3 weeks | rSDP catalog walk | not started |
+| 1. MVP browser (interface) | 6–8 weeks | Phase 0; Terraform baseline | **sandboxed** — all MVP features built in `prototype/`; infra scaffolded; AWS apply pending account + domain |
+| 2. AOI extraction (small) | 4–6 weeks | Phase 1 | **sandboxed** — AOI bbox, histograms, GeoTIFF/PNG subset, R snippet export all live in `prototype/` |
+| 3. STAC API + async jobs | 6–8 weeks | Phase 2 | not started; client-side STAC walk is sufficient for current catalog size |
+| 4. Polish & scale | ongoing | Phase 3 | not started |
 
 Total to a "complete" v1: roughly **5–6 months of one engineer**, faster with parallelism between infra and UI.
+
+### Immediate path to first live deploy
+
+1. Choose an AWS account + region (us-east-2 to match `rmbl-sdp`).
+2. Run `infra/bootstrap/` to provision the Terraform state bucket + lock table.
+3. Create `staging` / `prod` GitHub environments; drop `AWS_DEPLOY_ROLE_ARN` in as a non-secret variable after the first Terraform apply prints it.
+4. Let CI take over: `git push origin main` → staging deploys automatically.
 
 ---
 
 ## 11. Open questions
 
+Things still blocking the jump from scaffold to a live URL:
+
 1. **Hosting account:** does RMBL have an existing AWS account with billing alerts and org policies, or do we set up a new sub-account for SDP Browser?
-2. **Domain & TLS:** preferred subdomain under `rmbl.org`? Route53 or external DNS?
-3. **Analytics & privacy posture:** okay to set cookies / use PostHog, or strictly log-based analytics?
-4. **ArcGIS Online tokens:** are any services private? If so, how do we handle auth (server-side proxy vs public-only scope)?
-5. **Citation & license surfacing:** is there a canonical citation string per product, or derived per-collection?
-6. **Budget ceiling:** target monthly AWS spend (for autoscaling caps).
-7. **Workshop calendar:** known dates we should plan provisioned-concurrency warm-ups for.
+2. **Domain & TLS:** preferred subdomain under `rmbl.org`? Route53 or external DNS? Until this lands, staging + prod will come up on `*.cloudfront.net` URLs.
+3. **Budget ceiling:** target monthly AWS spend (shapes autoscaling caps in `infra/envs/*/terraform.tfvars`).
+4. **Workshop calendar:** known dates we should pre-scale for.
+
+Longer-horizon, not blocking an initial deploy:
+
+5. **Analytics & privacy posture:** okay to set cookies / use PostHog, or strictly log-based (CloudFront real-time logs → Athena)?
+6. **ArcGIS Online tokens:** the research-sites overlay is public today. If private services get added, we need a server-side proxy, not in-browser tokens.
+7. **Citation & license surfacing:** is there a canonical citation string per product, or derived per-collection?
+8. **STAC catalog cleanup:** some items are serialized with bare `NaN` / `Infinity` tokens (not valid JSON); we work around it in the browser walker but upstream is the right fix.
 
 ---
 
