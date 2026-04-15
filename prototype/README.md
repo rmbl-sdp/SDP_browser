@@ -2,6 +2,14 @@
 
 A local, Docker-composed stack to iterate on the SDP Browser interface **before** committing to the full cloud deployment described in `../SPEC.md`. The goal is to validate the user experience against real SDP data, not to demonstrate production latency or scale.
 
+## Relationship to the rest of the repo
+
+- **This directory** (`prototype/`) is the sandbox. Break things freely; ship when the feature feels right.
+- [`../app/web/`](../app/) is the **production frontend** — today a verbatim copy of `prototype/web/` with a runtime config shim. Changes here get promoted there by hand until we unify.
+- [`../services/titiler/`](../services/) is the **production Dockerfile** for the tile server, mirroring `prototype/titiler/` but with `CORS_ORIGINS` as a runtime env var.
+- [`../infra/`](../infra/) is the **Terraform** for the AWS deployment; `prototype/` never talks to that.
+- [`../SPEC.md`](../SPEC.md) is the architecture blueprint.
+
 The stack is two containers:
 
 - **TiTiler** (FastAPI + `rio-tiler`) — dynamic COG tile server that reads SDP COGs anonymously from `s3://rmbl-sdp` in `us-east-2`. Exposes `/cog/tiles/…`, `/cog/info`, `/cog/statistics`, `/cog/bbox/…`, etc.
@@ -94,7 +102,7 @@ prototype/
 
 ## Configuration
 
-- **STAC root**: hard-coded in `web/index.html` as `STAC_ROOT`. Point at any STAC catalog that exposes the same `rmbl:*` collection summaries, or at `web/catalog.json` (relative) to always use the toy catalog.
+- **STAC root**: hard-coded in `web/index.html` as `STAC_ROOT`. Point at any STAC catalog that exposes the same `rmbl:*` collection summaries, or at `web/catalog.json` (relative) to always use the toy catalog. (The production app at `../app/web/` instead reads this from a runtime `config.js`; the prototype keeps things hardcoded on purpose.)
 - **TiTiler endpoint**: `TITILER` constant in `web/index.html`, defaults to `http://localhost:8000`.
 - **Fallback catalog schema** (`web/catalog.json`):
 
@@ -144,10 +152,10 @@ prototype/
 
 ## Roadmap (this prototype → production)
 
-The items below are explicitly out of scope for the local prototype and align with phases in `../SPEC.md`:
+Tracking against `../SPEC.md`:
 
-- Real deployment on AWS Fargate behind ALB + CloudFront + WAF, via Terraform + GitHub Actions OIDC.
-- `stac-fastapi` + `pgstac` for server-side CQL2 search and dynamic mosaics (`titiler-pgstac`).
-- Async extraction jobs for AOIs larger than a single tile fits.
-- Arbitrary-polygon AOI (Terra Draw) instead of bbox-only rectangles.
-- Thumbnails / footprints in the discovery drawer (SDP STAC items don't have them yet).
+- ✅ **Deployment scaffolding** — Terraform modules, bootstrap, envs, and CI workflows exist in `../infra/` and `../.github/workflows/`. First `terraform apply` is pending an AWS account + domain decision.
+- ➖ `stac-fastapi` + `pgstac` for server-side CQL2 search and dynamic mosaics (`titiler-pgstac`). Not needed at current catalog size; client-side STAC walk handles it.
+- ➖ Async extraction jobs for AOIs larger than a single tile fits.
+- ➖ Arbitrary-polygon AOI (Terra Draw) instead of bbox-only rectangles.
+- ➖ Thumbnails / footprints in the discovery drawer (SDP STAC items don't have them yet — upstream fix).

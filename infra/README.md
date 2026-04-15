@@ -23,6 +23,15 @@ infra/
 
 **Scaffold only.** Everything here `terraform validate`s without AWS credentials; nothing has been `apply`-ed. The sections below document what needs to happen when it's time to deploy.
 
+Local checks that CI also runs:
+
+```bash
+terraform fmt -check -recursive infra/
+terraform -chdir=infra/bootstrap      init -backend=false && terraform -chdir=infra/bootstrap      validate
+terraform -chdir=infra/envs/staging   init -backend=false && terraform -chdir=infra/envs/staging   validate
+terraform -chdir=infra/envs/prod      init -backend=false && terraform -chdir=infra/envs/prod      validate
+```
+
 ## One-time bootstrap
 
 Run once per AWS account to create the Terraform state bucket + lock table. Use an IAM user with admin credentials or an AWS SSO session — this module runs with **local state**.
@@ -51,10 +60,12 @@ terraform apply -var container_image_tag=bootstrap  # full stack
 ```
 
 OIDC trust is scoped to `rmbl-sdp/SDP_browser`:
-- Staging accepts `ref:refs/heads/main`.
-- Prod accepts `ref:refs/tags/v*`.
+- Staging accepts `ref:refs/heads/main` (triggers `deploy-staging.yml`).
+- Prod accepts `ref:refs/tags/v*` (triggers `deploy-prod.yml`).
 
-The deploy role ARN is a Terraform output (`github_deploy_role_arn`). Set it as a **repository variable** (`AWS_DEPLOY_ROLE_ARN`) in the corresponding GitHub environment (`staging` / `prod`). These are non-secret, so a variable is fine; protect the `prod` environment with a required-reviewer rule.
+The deploy role ARN is a Terraform output (`github_deploy_role_arn`). Paste it as a **non-secret variable** named `AWS_DEPLOY_ROLE_ARN` on each of the `staging` / `prod` GitHub environments. Protect the `prod` environment with a required-reviewer rule so tags can't accidentally ship.
+
+A side-note on the OIDC provider itself: the first `apply` in a given AWS account creates the `aws_iam_openid_connect_provider`; subsequent stacks (the `prod` env) set `create_oidc_provider = false` and look it up instead. If you deploy `prod` into a *separate* AWS account, flip that flag back to `true` in `envs/prod/main.tf`.
 
 ## DNS + TLS
 
@@ -90,6 +101,13 @@ Per env (`terraform output`):
 
 - `ecr_repository_url` — where `docker push` goes.
 - `ecs_cluster_name`, `ecs_service_name` — for `aws ecs update-service`.
-- `api_distribution_domain`, `site_distribution_domain` — the CloudFront hostnames; used to populate `app/web/config.js`.
-- `site_bucket_name` — `aws s3 sync app/web s3://…` target.
+- `api_distribution_domain`, `site_distribution_domain` — the CloudFront hostnames; used to populate `../app/web/config.js`.
+- `site_bucket_name` — `aws s3 sync ../app/web s3://…` target.
 - `github_deploy_role_arn` — the value to put in the GitHub environment's `AWS_DEPLOY_ROLE_ARN` variable.
+
+## What talks to what
+
+- **`../.github/workflows/deploy-*.yml`** consumes these outputs directly via `terraform output -raw` and drives the actual build + push + sync + invalidate steps. Terraform owns infrastructure shape; GitHub Actions owns the per-release image tag and the `config.js` content. The split keeps state-drift under Terraform's nose and release cadence under git's.
+- **`../services/titiler/Dockerfile`** is the ECS task image. Environment variables are wired in `envs/*/main.tf` via `module "ecs_titiler" { environment = [...] }`.
+- **`../app/web/`** is the bundle synced to the `site_bucket_name` S3 bucket, with a generated `config.js` pointing at `api_distribution_domain`.
+- **`../prototype/`** does not touch this infra at all — it's a local Docker Compose stack and a non-goal for deployment.
