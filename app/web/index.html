@@ -1119,6 +1119,72 @@
       // re-adding a layer (or switching years in a time-series) doesn't
       // re-hit /cog/statistics.
       const autoRescaleCache = new Map();
+      // Cache of /cog/info results so the probe below runs once per item id.
+      const cogInfoCache = new Map();
+
+      // Probe TiTiler /cog/info to reconcile band count when the STAC metadata
+      // under-reports it. Some SDP items declare a single raster:band in their
+      // STAC JSON even though the underlying GeoTIFF is multi-band RGB —
+      // without this probe those layers render as singleband with a colormap
+      // applied to band 1, which looks nothing like the intended basemap.
+      async function probeCogInfo(lyr) {
+        const item = catalogItem(lyr.catalogId);
+        if (!item) return;
+        if (cogInfoCache.has(item.id)) {
+          applyCogInfo(lyr, cogInfoCache.get(item.id));
+          return;
+        }
+        const cogUrl = resolveCogUrl(lyr);
+        const u = new URL(`${TITILER}/cog/info`);
+        u.searchParams.set("url", cogUrl);
+        try {
+          const resp = await fetch(u.toString());
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const info = await resp.json();
+          cogInfoCache.set(item.id, info);
+          applyCogInfo(lyr, info);
+        } catch (e) {
+          console.debug("cog info probe failed for", item.id, e.message || e);
+          cogInfoCache.set(item.id, null);
+        }
+      }
+
+      function applyCogInfo(lyr, info) {
+        if (!info) return;
+        const item = catalogItem(lyr.catalogId);
+        if (!item) return;
+        const count = typeof info.count === "number" ? info.count : null;
+        const dtype = info.dtype || "";
+        if (count == null) return;
+        // Reconcile STAC-under-reports-bands: promote singleband uint8 (or
+        // uint16) with ≥3 bands to multiband RGB.
+        if (count >= 3 && item.kind === "singleband" && /^uint/.test(dtype)) {
+          const descriptions = Array.isArray(info.band_descriptions) ? info.band_descriptions : [];
+          item.kind = "multiband";
+          item.bands = Array.from({ length: count }, (_, i) => ({
+            idx: i + 1,
+            name: descriptions[i]?.[1] || descriptions[i]?.[0] || `Band ${i + 1}`,
+          }));
+          item.default_mode = "rgb";
+          item.default_bidx = [1, 2, 3];
+          // Preserve a user-edited rescale; reset heuristic defaults to the
+          // natural uint8/uint16 range.
+          const naturalRange = dtype === "uint8" ? "0,255" : "0,10000";
+          if (lyr.rescale === item.default_rescale) {
+            item.default_rescale = naturalRange;
+            lyr.rescale = naturalRange;
+          }
+          lyr.mode = "rgb";
+          lyr.bidx = [1, 2, 3];
+          lyr.colormap = null;
+          reloadMapLayer(lyr);
+          renderActive();
+          renderMapLegend();
+          if (state.aoi) fetchStats();
+          updateAoiDownloads();
+          updateHash();
+        }
+      }
 
       async function autoRescale(lyr, { force = false } = {}) {
         const item = catalogItem(lyr.catalogId);
@@ -1205,7 +1271,16 @@
         // Refine the default stretch once if it came from a keyword heuristic
         // rather than real statistics; hits TiTiler /cog/statistics on an
         // overview so typical latency is a few hundred ms.
-        if (item.rescale_source !== "stac") autoRescale(lyr);
+        // Probe the real COG first so we know whether it's actually multiband
+        // RGB; autoRescale only makes sense for single-band colormap layers.
+        (async () => {
+          await probeCogInfo(lyr);
+          const current = catalogItem(lyr.catalogId);
+          const isRgb = current?.kind === "multiband" && lyr.mode === "rgb";
+          if (!isRgb && current?.rescale_source !== "stac") {
+            await autoRescale(lyr);
+          }
+        })();
       }
       function removeActive(uid) {
         const idx = state.active.findIndex((l) => l.uid === uid);
@@ -2447,6 +2522,10 @@ writeRaster(subset, "${outName}", overwrite = TRUE)
           // Start persisting view pans/zooms into the hash now that the
           // initial view has been applied.
           map.on("moveend", updateHash);
+
+          // Reconcile descriptors against actual COG band counts (STAC can
+          // under-report). Runs in the background after layers are on screen.
+          state.active.forEach((l) => probeCogInfo(l));
         };
         if (map.loaded()) onMapReady(); else map.on("load", onMapReady);
       })();

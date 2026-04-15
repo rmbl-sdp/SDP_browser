@@ -346,7 +346,7 @@ Longer-horizon, not blocking an initial deploy:
 5. **Analytics & privacy posture:** okay to set cookies / use PostHog, or strictly log-based (CloudFront real-time logs → Athena)?
 6. **ArcGIS Online tokens:** the research-sites overlay is public today. If private services get added, we need a server-side proxy, not in-browser tokens.
 7. **Citation & license surfacing:** is there a canonical citation string per product, or derived per-collection?
-8. **STAC catalog cleanup:** some items are serialized with bare `NaN` / `Infinity` tokens (not valid JSON); we work around it in the browser walker but upstream is the right fix.
+8. **STAC catalog cleanup:** two recurring upstream issues — (a) some items are serialized with bare `NaN` / `Infinity` tokens (not valid JSON); (b) some multi-band RGB basemaps (e.g. `BM012 ug-canopy-structure-basemap`, `UG_canopy_basemap_v3.tif`) declare a single `raster:bands` entry even though the underlying COG has 3+ bands. The browser works around both (JSON sanitation + a `/cog/info` probe on add) but the right fix is upstream.
 
 ---
 
