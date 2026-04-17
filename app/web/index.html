@@ -643,6 +643,7 @@
             <button id="dlTif" class="dl-btn">Download GeoTIFF Subset</button>
             <button id="dlPng" class="dl-btn">Download PNG Subset</button>
             <button id="dlR" class="dl-btn">Copy Subset R Code</button>
+            <button id="dlPy" class="dl-btn">Copy Subset Python Code</button>
           </div>
           <div id="dlInfo" class="hint" style="margin-top: 6px;"></div>
         </div>
@@ -2132,25 +2133,58 @@ writeRaster(subset, "${outName}", overwrite = TRUE)
 `;
       }
 
+      function pysdpSnippet(lyr, bbox) {
+        const item = catalogItem(lyr.catalogId);
+        const id = item.rsdp_id || "<CATALOG_ID>";
+        const [minx, miny, maxx, maxy] = bbox;
+        const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
+        let openCall = `pysdp.open_raster("${id}")`;
+        if (item.kind === "timeseries" && lyr.year != null) {
+          openCall = `pysdp.open_raster("${id}", years=[${lyr.year}])`;
+        }
+        return `# pip install pysdp
+import pysdp
+
+# ${item.title}
+metadata = pysdp.get_metadata("${id}")
+dataset  = ${openCall}
+
+# AOI bbox drawn in the SDP Browser (WGS84 lon/lat).
+# rioxarray clip_box takes (minx, miny, maxx, maxy).
+subset = dataset.rio.clip_box(
+    minx=${minx.toFixed(6)}, miny=${miny.toFixed(6)},
+    maxx=${maxx.toFixed(6)}, maxy=${maxy.toFixed(6)},
+    crs="EPSG:4326",
+)
+
+# Save clipped subset.
+subset.rio.to_raster("${outName}")
+`;
+      }
+
       // Close any open colormap picker when clicking elsewhere.
       document.addEventListener("click", () => {
         document.querySelectorAll(".cmap-picker.open").forEach((p) => p.classList.remove("open"));
       });
 
-      document.getElementById("dlR").addEventListener("click", async (e) => {
+      async function copySnippet(snippetFn, label, btn) {
         const lyr = targetLayer();
         if (!state.aoi || !lyr) return;
-        const code = rsdpSnippet(lyr, aoiBbox());
-        const btn = e.currentTarget;
+        const code = snippetFn(lyr, aoiBbox());
         const orig = btn.textContent;
         try {
           await navigator.clipboard.writeText(code);
-          btn.textContent = "R code copied";
+          btn.textContent = `${label} copied`;
         } catch {
           btn.textContent = "Copy failed";
         }
         setTimeout(() => (btn.textContent = orig), 1400);
-      });
+      }
+
+      document.getElementById("dlR").addEventListener("click", (e) =>
+        copySnippet(rsdpSnippet, "R code", e.currentTarget));
+      document.getElementById("dlPy").addEventListener("click", (e) =>
+        copySnippet(pysdpSnippet, "Python code", e.currentTarget));
 
       document.getElementById("dlTif").addEventListener("click", () => downloadSubset("tif"));
       document.getElementById("dlPng").addEventListener("click", () => downloadSubset("png"));
