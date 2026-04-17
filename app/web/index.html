@@ -334,14 +334,23 @@
         margin-top: -4px; margin-bottom: 10px;
       }
 
+      .dl-group-label {
+        font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+        color: var(--muted); margin: 8px 0 4px; display: block;
+      }
+      .dl-group-label:first-child { margin-top: 0; }
+      .dl-row {
+        display: flex; gap: 6px;
+      }
       .dl-btn {
-        display: inline-block;
+        flex: 1;
         background: #333942; color: var(--text);
         border: 1px solid var(--border);
         border-radius: 4px;
-        padding: 5px 10px;
+        padding: 6px 10px;
         font-size: 11px;
         text-decoration: none;
+        text-align: center;
         cursor: pointer;
       }
       .dl-btn:hover { border-color: var(--accent); color: var(--text); }
@@ -639,11 +648,15 @@
 
         <h3 class="sub">Subset Data by AOI</h3>
         <div id="aoiDownloads" hidden>
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-            <button id="dlTif" class="dl-btn">Download GeoTIFF Subset</button>
-            <button id="dlPng" class="dl-btn">Download PNG Subset</button>
-            <button id="dlR" class="dl-btn">Copy Subset R Code</button>
-            <button id="dlPy" class="dl-btn">Copy Subset Python Code</button>
+          <label class="dl-group-label">Download</label>
+          <div class="dl-row">
+            <button id="dlTif" class="dl-btn">GeoTIFF</button>
+            <button id="dlPng" class="dl-btn">PNG (styled)</button>
+          </div>
+          <label class="dl-group-label">Copy code</label>
+          <div class="dl-row">
+            <button id="dlR" class="dl-btn">R (rSDP)</button>
+            <button id="dlPy" class="dl-btn">Python (pysdp)</button>
           </div>
           <div id="dlInfo" class="hint" style="margin-top: 6px;"></div>
         </div>
