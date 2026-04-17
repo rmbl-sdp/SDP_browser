@@ -161,6 +161,7 @@ function buildDescriptor({ collection, items, collectionUrl }) {
     stacItemUrl: firstItem?.links?.find((l) => l.rel === "self")?.href
       || (firstItem ? resolveUrl(collectionUrl, `./${firstItem.id}/${firstItem.id}.json`) : null),
     stacCollectionUrl: collectionUrl,
+    thumbnail: collection.assets?.thumbnail?.href || null,
   };
 
   if (items.length > 1) {
