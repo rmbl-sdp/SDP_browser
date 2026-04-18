@@ -652,6 +652,7 @@
           <div class="dl-row">
             <button id="dlTif" class="dl-btn">GeoTIFF</button>
             <button id="dlPng" class="dl-btn">PNG (styled)</button>
+            <button id="dlNb" class="dl-btn">Notebook (.ipynb)</button>
           </div>
           <label class="dl-group-label">Copy code</label>
           <div class="dl-row">
@@ -2175,6 +2176,122 @@ subset.rio.to_raster("${outName}")
 `;
       }
 
+      function generateNotebook(lyr, bbox) {
+        const item = catalogItem(lyr.catalogId);
+        const id = item.rsdp_id || "<CATALOG_ID>";
+        const [minx, miny, maxx, maxy] = bbox;
+        const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
+        const nbName = `${cogBasename(resolveCogUrl(lyr))}_AOI.ipynb`;
+        let openCall = `pysdp.open_raster("${id}")`;
+        if (item.kind === "timeseries" && lyr.year != null) {
+          openCall = `pysdp.open_raster("${id}", years=[${lyr.year}])`;
+        }
+        const isRgb = item.kind === "multiband" && lyr.mode === "rgb";
+
+        const metaRows = [
+          ["Catalog ID", id],
+          ["Domain", item.domain || "—"],
+          ["Release", item.release || "—"],
+          ["Type", item.type || "—"],
+          ["Resolution", item.gsd != null ? `${item.gsd} m` : "—"],
+          ["CRS", `EPSG:${item.epsg || 32613}`],
+          ["Temporal", item.temporal?.[0] ? `${item.temporal[0]} → ${item.temporal[1] || "…"}` : "—"],
+          ["AOI bbox (WGS84)", `${minx.toFixed(4)}, ${miny.toFixed(4)}, ${maxx.toFixed(4)}, ${maxy.toFixed(4)}`],
+        ];
+        const metaTable = "| Field | Value |\n|---|---|\n" +
+          metaRows.map(([k, v]) => `| ${k} | ${v} |`).join("\n");
+        const thumbLine = item.thumbnail ? `\n\n![Thumbnail](${item.thumbnail})` : "";
+
+        const mdCell = [
+          `# ${item.title}\n`,
+          `\n`,
+          `${item.description || ""}\n`,
+          `\n`,
+          `${metaTable}\n`,
+          `${thumbLine}\n`,
+        ];
+
+        const installCell = [
+          `# Uncomment the line below if pysdp is not already installed\n`,
+          `# !pip install pysdp\n`,
+        ];
+
+        const loadCell = [
+          `import pysdp\n`,
+          `\n`,
+          `# Load the dataset\n`,
+          `dataset = ${openCall}\n`,
+          `\n`,
+          `# Clip to the AOI drawn in the SDP Browser\n`,
+          `subset = dataset.rio.clip_box(\n`,
+          `    minx=${minx.toFixed(6)}, miny=${miny.toFixed(6)},\n`,
+          `    maxx=${maxx.toFixed(6)}, maxy=${maxy.toFixed(6)},\n`,
+          `    crs="EPSG:4326",\n`,
+          `)\n`,
+          `subset\n`,
+        ];
+
+        let plotCell;
+        if (isRgb) {
+          plotCell = [
+            `# Quick-look visualization (RGB composite)\n`,
+            `subset.sel(band=[1, 2, 3]).plot.imshow(figsize=(10, 8))\n`,
+          ];
+        } else {
+          plotCell = [
+            `# Quick-look visualization\n`,
+            `subset.plot(figsize=(10, 8), cmap="viridis")\n`,
+          ];
+        }
+
+        const exportCell = [
+          `# Save the clipped subset as a GeoTIFF\n`,
+          `subset.rio.to_raster("${outName}")\n`,
+          `print(f"Saved to ${outName}")\n`,
+        ];
+
+        let cellId = 0;
+        const mkCell = (type, source) => {
+          const cell = {
+            cell_type: type,
+            metadata: {},
+            source,
+            id: `sdp-${cellId++}`,
+          };
+          if (type === "code") {
+            cell.outputs = [];
+            cell.execution_count = null;
+          }
+          return cell;
+        };
+
+        const nb = {
+          nbformat: 4,
+          nbformat_minor: 5,
+          metadata: {
+            kernelspec: { display_name: "Python 3", language: "python", name: "python3" },
+            language_info: { name: "python", version: "3.11.0" },
+          },
+          cells: [
+            mkCell("markdown", mdCell),
+            mkCell("code", installCell),
+            mkCell("code", loadCell),
+            mkCell("code", plotCell),
+            mkCell("code", exportCell),
+          ],
+        };
+
+        const blob = new Blob([JSON.stringify(nb, null, 1)], { type: "application/x-ipynb+json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = nbName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      }
+
       // Close any open colormap picker when clicking elsewhere.
       document.addEventListener("click", () => {
         document.querySelectorAll(".cmap-picker.open").forEach((p) => p.classList.remove("open"));
@@ -2201,6 +2318,11 @@ subset.rio.to_raster("${outName}")
 
       document.getElementById("dlTif").addEventListener("click", () => downloadSubset("tif"));
       document.getElementById("dlPng").addEventListener("click", () => downloadSubset("png"));
+      document.getElementById("dlNb").addEventListener("click", () => {
+        const lyr = targetLayer();
+        if (!state.aoi || !lyr) return;
+        generateNotebook(lyr, aoiBbox());
+      });
       async function fetchStats() {
         const lyr = targetLayer();
         if (!state.aoi || !lyr) return;
