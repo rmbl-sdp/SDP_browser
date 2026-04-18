@@ -80,6 +80,18 @@ Build on the current .ipynb download to offer a single-click handoff into `rmblc
 - `POST /extract` → job queue → worker → output to S3 → pre-signed URL.
 - Jobs panel in the UI with status, progress, and download link.
 
+### Icechunk / Zarr-backed array datasets
+The CHESS Analysis Hub hosts large multi-dimensional datasets (e.g. NEON AOP hyperspectral imagery — 426 bands, ~1,700 tiles across 4 domains/years) that don't fit the COG-per-layer model. These are stored as NetCDF on S3 (`s3://rmbl-chess-data/AOP/spectrometer/mosaic/`) and accessed via [VirtualiZarr](https://github.com/zarr-developers/VirtualiZarr) + [Icechunk](https://github.com/earth-mover/icechunk) virtual stores at `s3://rmbl-chess-data/virtual/AOP/spectrometer/{domain}/{year}/`. A separate STAC catalog (`s3://rmbl-chess-data/stac/catalog.json`, ~1,742 items) indexes the individual tiles.
+
+Integration path:
+1. **Multi-catalog discovery** — extend `CatalogRepo` to walk multiple STAC roots (the SDP COG catalog + the CHESS AOP catalog). The UI groups results by source and flags the dataset format (COG vs. Zarr/Icechunk).
+2. **Zarr-aware tile server** — TiTiler can't render Zarr natively. Options: [titiler-xarray](https://github.com/developmentseed/titiler-xarray) for xarray-backed datasets, or [Xpublish](https://github.com/xpublish-community/xpublish) with a tile-serving plugin. Either runs as a second Fargate service behind the same CloudFront distribution.
+3. **Band/wavelength selection UI** — 426-band data needs a wavelength picker (not just a band-index dropdown). Could expose a spectral-profile viewer (click a pixel → plot reflectance vs. wavelength) alongside the existing histogram panel.
+4. **Generated notebooks** — for Icechunk datasets, the .ipynb generator would emit `xr.open_zarr(icechunk_store_url)` instead of `pysdp.open_raster()`, with `sel(wavelength=...)` for band subsetting.
+5. **Performance** — Icechunk virtual stores support lazy chunk reads; the tile server reads only the chunks intersecting the requested tile, so latency is comparable to COG range reads if the store is well-chunked.
+
+Prerequisite: confirm the AOP STAC catalog is stable and the virtual stores are fully rebuilt after the 2026-03 S3 path migration.
+
 ---
 
 ## Long-term / aspirational
