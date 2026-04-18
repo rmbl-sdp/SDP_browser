@@ -661,6 +661,7 @@
           <label class="dl-group-label">Download Notebook</label>
           <div class="dl-row">
             <button id="dlNb" class="dl-btn">Jupyter (.ipynb)</button>
+            <button id="dlRmd" class="dl-btn">R Markdown (.Rmd)</button>
           </div>
           <div id="dlInfo" class="hint" style="margin-top: 6px;"></div>
         </div>
@@ -2295,6 +2296,94 @@ subset.rio.to_raster("${outName}")
         setTimeout(() => URL.revokeObjectURL(url), 10000);
       }
 
+      function generateRmd(lyr, bbox) {
+        const item = catalogItem(lyr.catalogId);
+        const id = item.rsdp_id || "<CATALOG_ID>";
+        const [minx, miny, maxx, maxy] = bbox;
+        const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
+        const rmdName = `${cogBasename(resolveCogUrl(lyr))}_AOI.Rmd`;
+        let rasterCall = `sdp_get_raster("${id}")`;
+        if (item.kind === "timeseries" && lyr.year != null) {
+          rasterCall = `sdp_get_raster("${id}", years = ${lyr.year})`;
+        }
+
+        const metaRows = [
+          ["Catalog ID", id],
+          ["Domain", item.domain || "—"],
+          ["Release", item.release || "—"],
+          ["Type", item.type || "—"],
+          ["Resolution", item.gsd != null ? `${item.gsd} m` : "—"],
+          ["CRS", `EPSG:${item.epsg || 32613}`],
+          ["Temporal", item.temporal?.[0] ? `${item.temporal[0]} → ${item.temporal[1] || "…"}` : "—"],
+          ["AOI bbox (WGS84)", `${minx.toFixed(4)}, ${miny.toFixed(4)}, ${maxx.toFixed(4)}, ${maxy.toFixed(4)}`],
+        ];
+        const metaTable = "| Field | Value |\n|---|---|\n" +
+          metaRows.map(([k, v]) => `| ${k} | ${v} |`).join("\n");
+        const thumbLine = item.thumbnail ? `\n![Thumbnail](${item.thumbnail})\n` : "";
+
+        const rmd = `---
+title: "${item.title}"
+output: html_document
+---
+
+${item.description || ""}
+
+${metaTable}
+${thumbLine}
+## Setup
+
+\`\`\`{r setup, message=FALSE}
+# Uncomment the lines below if rSDP is not already installed
+# install.packages("remotes")
+# remotes::install_github("rmbl-sdp/rSDP")
+
+library(rSDP)
+library(terra)
+\`\`\`
+
+## Load and Clip Dataset
+
+\`\`\`{r load}
+metadata <- sdp_get_metadata("${id}")
+dataset  <- ${rasterCall}
+
+# AOI bbox drawn in the SDP Browser (WGS84 lon/lat).
+# terra::ext() takes (xmin, xmax, ymin, ymax).
+aoi <- vect(
+  ext(${minx.toFixed(6)}, ${maxx.toFixed(6)}, ${miny.toFixed(6)}, ${maxy.toFixed(6)}),
+  crs = "EPSG:4326"
+)
+aoi <- project(aoi, crs(dataset))
+
+subset <- crop(dataset, aoi)
+subset
+\`\`\`
+
+## Quick-look Visualization
+
+\`\`\`{r plot, fig.width=10, fig.height=8}
+plot(subset, main = "${item.title}")
+\`\`\`
+
+## Export
+
+\`\`\`{r export}
+writeRaster(subset, "${outName}", overwrite = TRUE)
+message("Saved to ${outName}")
+\`\`\`
+`;
+
+        const blob = new Blob([rmd], { type: "text/x-r-markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = rmdName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      }
+
       // Close any open colormap picker when clicking elsewhere.
       document.addEventListener("click", () => {
         document.querySelectorAll(".cmap-picker.open").forEach((p) => p.classList.remove("open"));
@@ -2325,6 +2414,11 @@ subset.rio.to_raster("${outName}")
         const lyr = targetLayer();
         if (!state.aoi || !lyr) return;
         generateNotebook(lyr, aoiBbox());
+      });
+      document.getElementById("dlRmd").addEventListener("click", () => {
+        const lyr = targetLayer();
+        if (!state.aoi || !lyr) return;
+        generateRmd(lyr, aoiBbox());
       });
       async function fetchStats() {
         const lyr = targetLayer();
