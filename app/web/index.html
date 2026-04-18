@@ -2238,13 +2238,21 @@ subset.rio.to_raster("${outName}")
         let plotCell;
         if (isRgb) {
           plotCell = [
-            `# Quick-look visualization (RGB composite)\n`,
-            `subset.sel(band=[1, 2, 3]).plot.imshow(figsize=(10, 8))\n`,
+            `# Quick-look visualization (RGB composite, downsampled for speed)\n`,
+            `var = list(subset.data_vars)[0]\n`,
+            `da = subset[var]\n`,
+            `max_dim = max(da.sizes.get("x", 1), da.sizes.get("y", 1))\n`,
+            `thin = max(1, max_dim // 1000)\n`,
+            `da.thin({"x": thin, "y": thin}).sel(band=[1, 2, 3]).plot.imshow(figsize=(10, 8))\n`,
           ];
         } else {
           plotCell = [
-            `# Quick-look visualization\n`,
-            `subset.plot(figsize=(10, 8), cmap="viridis")\n`,
+            `# Quick-look visualization (downsampled for speed)\n`,
+            `var = list(subset.data_vars)[0]\n`,
+            `da = subset[var]\n`,
+            `max_dim = max(da.sizes.get("x", 1), da.sizes.get("y", 1))\n`,
+            `thin = max(1, max_dim // 1000)\n`,
+            `da.thin({"x": thin, "y": thin}).plot(figsize=(10, 8), cmap="viridis")\n`,
           ];
         }
 
