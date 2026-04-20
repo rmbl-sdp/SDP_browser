@@ -107,6 +107,33 @@ async function parallelMap(items, limit, fn) {
 
 // --- time-series detection ---
 
+// Parse 4-digit years from item link hrefs / IDs without fetching items.
+// This is the key to making the walk fast: a daily time-series collection
+// may have thousands of item links, but we only need to know which *years*
+// are covered (the UI exposes a year slider, not a day slider).
+function parseYearsFromLinks(links) {
+  const years = new Set();
+  for (const l of links) {
+    const href = l.href || "";
+    const m = href.match(/(\d{4})/);
+    if (m) {
+      const y = parseInt(m[1], 10);
+      if (y >= 1950 && y <= 2100) years.add(y);
+    }
+  }
+  return [...years].sort((a, b) => a - b);
+}
+
+// Build a URL template from a sample item's asset href + a known year.
+function buildUrlTemplate(sampleHref, sampleYear) {
+  if (!sampleHref || !sampleYear) return null;
+  const yearStr = String(sampleYear);
+  const yearRe = new RegExp(`(^|[^0-9])${yearStr}([^0-9]|$)`, "g");
+  let count = 0;
+  const tmpl = sampleHref.replace(yearRe, (_, a, b) => { count++; return `${a}{year}${b}`; });
+  return count === 1 ? tmpl : null;
+}
+
 function buildTimeseries(items) {
   const yearsByHref = new Map();
   for (const it of items) {
@@ -118,20 +145,17 @@ function buildTimeseries(items) {
   }
   const years = [...new Set([...yearsByHref.values()])].sort((a, b) => a - b);
   if (years.length < 2) return { url_template: null, years };
-
-  // Take the first item and replace its year token (as a standalone number)
-  // with {year}. Only valid if the year appears exactly once in the href.
   const [firstHref, firstYear] = [...yearsByHref.entries()][0];
-  const yearRe = new RegExp(`(^|[^0-9])${firstYear}([^0-9]|$)`, "g");
-  let count = 0;
-  const url_template = firstHref.replace(yearRe, (_, a, b) => { count++; return `${a}{year}${b}`; });
-  if (count !== 1) return { url_template: null, years };
-  return { url_template, years };
+  return { url_template: buildUrlTemplate(firstHref, firstYear), years };
 }
+
+// Threshold: collections with more item links than this use the fast path
+// (parse years from link hrefs, fetch only 1 sample item).
+const LARGE_COLLECTION_THRESHOLD = 30;
 
 // --- descriptor builder ---
 
-function buildDescriptor({ collection, items, collectionUrl }) {
+function buildDescriptor({ collection, items, collectionUrl, fastYears }) {
   const firstItem = items[0];
   const asset = firstItem?.assets?.data || null;
   const bands =
@@ -144,7 +168,7 @@ function buildDescriptor({ collection, items, collectionUrl }) {
   const dtype = bands[0]?.data_type || "";
 
   const desc = {
-    id: collection.id, // STAC collection slug is our catalog id
+    id: collection.id,
     title: collection.title || collection.id,
     description: collection.description || "",
     domain: collection["rmbl:domain"] || null,
@@ -164,7 +188,22 @@ function buildDescriptor({ collection, items, collectionUrl }) {
     thumbnail: collection.assets?.thumbnail?.href || null,
   };
 
-  if (items.length > 1) {
+  // Fast-path time-series: years were parsed from link hrefs, only 1 sample
+  // item was fetched. Build the URL template from that sample.
+  if (fastYears && fastYears.length > 1 && asset?.href) {
+    const sampleDt = firstItem?.properties?.datetime || firstItem?.properties?.start_datetime;
+    const sampleYear = sampleDt ? parseInt(sampleDt.slice(0, 4), 10) : fastYears[0];
+    const url_template = buildUrlTemplate(asset.href, sampleYear);
+    if (url_template) {
+      desc.kind = "timeseries";
+      desc.url_template = url_template;
+      desc.years = fastYears;
+      desc.default_year = fastYears[fastYears.length - 1];
+    } else {
+      desc.kind = "singleband";
+      desc.cog_url = asset.href;
+    }
+  } else if (items.length > 1) {
     const { url_template, years } = buildTimeseries(items);
     if (url_template && years.length > 1) {
       desc.kind = "timeseries";
@@ -217,7 +256,22 @@ export async function walkCatalog(rootUrl, onProgress) {
   const entries = await parallelMap(collectionUrls, 10, async (curl) => {
     try {
       const collection = await fetchJson(curl);
-      const iUrls = itemLinks(collection).map((l) => resolveUrl(curl, l.href));
+      const iLinks = itemLinks(collection);
+      const iUrls = iLinks.map((l) => resolveUrl(curl, l.href));
+
+      if (iUrls.length > LARGE_COLLECTION_THRESHOLD) {
+        // Fast path: parse years from link hrefs, fetch only 1 sample item.
+        // Saves thousands of fetches for daily time-series collections.
+        const fastYears = parseYearsFromLinks(iLinks);
+        const sampleItem = await fetchJson(iUrls[0]);
+        if (sampleItem?._error) throw new Error(sampleItem._error);
+        console.debug(
+          `[fast-path] ${collection.id}: ${iUrls.length} items → 1 fetch, ${fastYears.length} years`,
+        );
+        return { collection, items: [sampleItem], fastYears, collectionUrl: curl };
+      }
+
+      // Standard path: fetch all items (small collections).
       const items = await parallelMap(iUrls, 4, fetchJson);
       const failedItems = items.filter((i) => i && i._error);
       if (failedItems.length) console.warn("items failed in", curl, failedItems);
@@ -235,8 +289,14 @@ export async function walkCatalog(rootUrl, onProgress) {
   for (const entry of entries) {
     if (entry?._error) { console.warn("catalog walk error:", entry._error); continue; }
     if (!entry?.items?.length) continue;
-    try { descriptors.push(buildDescriptor(entry)); }
-    catch (e) { console.warn("descriptor build error:", entry.collection?.id, e); }
+    try {
+      descriptors.push(buildDescriptor({
+        collection: entry.collection,
+        items: entry.items,
+        collectionUrl: entry.collectionUrl,
+        fastYears: entry.fastYears || null,
+      }));
+    } catch (e) { console.warn("descriptor build error:", entry.collection?.id, e); }
   }
   return descriptors;
 }

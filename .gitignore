@@ -90,6 +90,10 @@ scratch/
 docker-compose.override.yml
 .docker/
 
+# ---------- Rendered doc artifacts (Quarto, etc.) ----------
+*.html
+*_files/
+
 # ---------- Claude Code local cache ----------
 .claude/
 .claude-code/
