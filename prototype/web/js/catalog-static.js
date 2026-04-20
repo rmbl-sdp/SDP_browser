@@ -195,10 +195,13 @@ function buildDescriptor({ collection, items, collectionUrl, fastYears }) {
     const sampleYear = sampleDt ? parseInt(sampleDt.slice(0, 4), 10) : fastYears[0];
     const url_template = buildUrlTemplate(asset.href, sampleYear);
     if (url_template) {
+      // For daily series the template bakes in a specific DOY from the sample
+      // item. Default to the sample's year so the initial tile request is
+      // guaranteed to resolve; other years may produce 404s for that DOY.
       desc.kind = "timeseries";
       desc.url_template = url_template;
       desc.years = fastYears;
-      desc.default_year = fastYears[fastYears.length - 1];
+      desc.default_year = sampleYear;
     } else {
       desc.kind = "singleband";
       desc.cog_url = asset.href;

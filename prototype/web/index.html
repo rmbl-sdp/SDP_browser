@@ -846,6 +846,7 @@
         const spec = renderSpec(lyr, item);
         spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
         if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", lyr.colormap);
+        if (item._nodata != null) u.searchParams.set("nodata", item._nodata);
         return u.toString().replace(/%7B/g, "{").replace(/%7D/g, "}");
       }
 
@@ -1195,6 +1196,10 @@
         if (!info) return;
         const item = catalogItem(lyr.catalogId);
         if (!item) return;
+        // Stash nodata so autoRescale + tile URLs can exclude it.
+        if (info.nodata != null && info.nodata !== "none") {
+          item._nodata = info.nodata;
+        }
         const count = typeof info.count === "number" ? info.count : null;
         const dtype = info.dtype || "";
         if (count == null) return;
@@ -1246,7 +1251,11 @@
         u.searchParams.set("url", cogUrl);
         u.searchParams.append("p", "2");
         u.searchParams.append("p", "98");
-        u.searchParams.set("max_size", "1024"); // operate on an overview; fast
+        u.searchParams.set("max_size", "1024");
+        // Exclude nodata from percentile computation — without this, COGs
+        // with undeclared nodata (e.g. -9999) poison the statistics and
+        // produce a useless rescale.
+        if (item._nodata != null) u.searchParams.set("nodata", item._nodata);
         try {
           const resp = await fetch(u.toString());
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);

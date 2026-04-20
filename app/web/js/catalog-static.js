@@ -189,7 +189,7 @@ function buildDescriptor({ collection, items, collectionUrl, fastYears }) {
       desc.kind = "timeseries";
       desc.url_template = url_template;
       desc.years = fastYears;
-      desc.default_year = fastYears[fastYears.length - 1];
+      desc.default_year = sampleYear;
     } else {
       desc.kind = "singleband";
       desc.cog_url = asset.href;
