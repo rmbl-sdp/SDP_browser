@@ -367,7 +367,7 @@
         border: 1px solid var(--border);
         border-radius: 6px; padding: 8px 10px;
         color: var(--text); font-size: 11px;
-        max-width: 240px; backdrop-filter: blur(6px);
+        max-width: 180px; backdrop-filter: blur(6px);
         pointer-events: auto;
         box-shadow: 0 2px 8px rgba(0,0,0,0.35);
       }
@@ -375,8 +375,9 @@
       .legend-entry { margin-bottom: 8px; }
       .legend-entry:last-child { margin-bottom: 0; }
       .legend-entry .lt {
-        font-weight: 600; font-size: 11px;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        font-weight: 600; font-size: 10px;
+        line-height: 1.3;
+        overflow-wrap: break-word;
       }
       .legend-entry .lmeta {
         color: var(--muted); font-size: 10px; margin-bottom: 3px;
@@ -903,6 +904,15 @@
       function targetLayer() { return state.active.find((l) => l.visible) || null; }
       const mapLayerId = (uid) => `cog-${uid}`;
       const mapSourceId = (uid) => `cog-${uid}`;
+
+      function formatUnits(u) {
+        if (!u) return "";
+        return u
+          .replace(/degrees?\s*celsi?us/i, "°C")
+          .replace(/degrees?\s*fahrenheit/i, "°F")
+          .replace(/degrees?\s*kelvin/i, "K")
+          .replace(/degrees?/i, "°");
+      }
 
       // Convert between physical (display) and raw (tile) rescale values.
       function toPhysical(raw, item) {
@@ -2191,7 +2201,7 @@
           const dateBit = lyr.date != null ? ` · ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "";
           return `<div class="legend-entry">
             <div class="lt">${item.title}</div>
-            <div class="lmeta">${lyr.colormap}${dateBit}${item.units ? ` · ${item.units}` : ""}</div>
+            <div class="lmeta">${lyr.colormap}${dateBit}${item.units ? ` · ${formatUnits(item.units)}` : ""}</div>
             <div class="bar" style="background:${gradient}"></div>
             <div class="labels"><span>${mn}</span><span>${mx}</span></div>
           </div>`;
