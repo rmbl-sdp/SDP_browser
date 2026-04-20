@@ -282,6 +282,8 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
     bbox: (!isGlobalBbox(firstItem?.bbox) ? firstItem.bbox : null)
       || (!isGlobalBbox(collection.extent?.spatial?.bbox?.[0]) ? collection.extent.spatial.bbox[0] : null),
     units: bands[0]?.unit || null,
+    scale: (typeof bands[0]?.scale === "number" && bands[0].scale !== 0) ? bands[0].scale : null,
+    offset: typeof bands[0]?.offset === "number" ? bands[0].offset : null,
     bandCount,
     dtype,
     stacItemUrl: firstItem?.links?.find((l) => l.rel === "self")?.href

@@ -783,17 +783,12 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script src="./config.js"></script>
     <script type="module">
       import { loadRepo, makeInMemoryRepo, stacBrowserLink, invalidateCache, resolveTimeseriesUrl, formatDateLabel } from "./js/catalog-static.js";
 
-      const SDP_CONFIG =
-        (typeof window !== "undefined" && window.__SDP_CONFIG__) || {};
+      const STAC_ROOT = "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json";
 
-      const STAC_ROOT = SDP_CONFIG.STAC_ROOT
-        || "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json";
-
-      const TITILER = SDP_CONFIG.TITILER || "http://localhost:8000";
+      const TITILER = "http://localhost:8000";
       const SINGLEBAND_CMAPS = [
         "viridis","magma","inferno","cividis","terrain",
         "rdbu","rdbu_r","spectral","greys","ylgnbu",
@@ -1099,8 +1094,8 @@
       // -------- RMBL research sites (classic ArcGIS FeatureServer) --------
       // OGCFeatureServer still requires a token even after "public" sharing;
       // the classic FeatureServer respects item sharing and returns GeoJSON.
-      const SITES_QUERY_URL = SDP_CONFIG.SITES_QUERY_URL
-        || "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026_Public_View/FeatureServer/14/query";
+      const SITES_QUERY_URL =
+        "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026_Public_View/FeatureServer/14/query";
 
       async function fetchResearchSites() {
         const features = [];
@@ -1305,11 +1300,18 @@
         if (info.nodata != null && info.nodata !== "none") {
           item._nodata = info.nodata;
         }
-        // Stash scale/offset for physical-unit display. The tile URL sends
-        // raw (unscaled) rescale values; the UI shows physical values.
-        if (typeof info.scale === "number" && info.scale !== 0) {
+        // Stash scale/offset for physical-unit display. Prefer the STAC-level
+        // value (from raster:bands, already on the descriptor) over /cog/info
+        // (which often reports 1.0 when the GeoTIFF doesn't embed it).
+        if (item.scale != null && item.scale !== 1) {
+          item._scale = item.scale;
+          item._offset = item.offset ?? 0;
+        } else if (typeof info.scale === "number" && info.scale !== 0 && info.scale !== 1) {
           item._scale = info.scale;
           item._offset = typeof info.offset === "number" ? info.offset : 0;
+        } else if (Array.isArray(info.scales) && info.scales[0] !== 1) {
+          item._scale = info.scales[0];
+          item._offset = Array.isArray(info.offsets) ? info.offsets[0] : 0;
         }
         const count = typeof info.count === "number" ? info.count : null;
         const dtype = info.dtype || "";

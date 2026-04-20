@@ -1300,11 +1300,18 @@
         if (info.nodata != null && info.nodata !== "none") {
           item._nodata = info.nodata;
         }
-        // Stash scale/offset for physical-unit display. The tile URL sends
-        // raw (unscaled) rescale values; the UI shows physical values.
-        if (typeof info.scale === "number" && info.scale !== 0) {
+        // Stash scale/offset for physical-unit display. Prefer the STAC-level
+        // value (from raster:bands, already on the descriptor) over /cog/info
+        // (which often reports 1.0 when the GeoTIFF doesn't embed it).
+        if (item.scale != null && item.scale !== 1) {
+          item._scale = item.scale;
+          item._offset = item.offset ?? 0;
+        } else if (typeof info.scale === "number" && info.scale !== 0 && info.scale !== 1) {
           item._scale = info.scale;
           item._offset = typeof info.offset === "number" ? info.offset : 0;
+        } else if (Array.isArray(info.scales) && info.scales[0] !== 1) {
+          item._scale = info.scales[0];
+          item._offset = Array.isArray(info.offsets) ? info.offsets[0] : 0;
         }
         const count = typeof info.count === "number" ? info.count : null;
         const dtype = info.dtype || "";
