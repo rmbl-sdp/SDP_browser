@@ -31,10 +31,31 @@ os.environ.setdefault("GDAL_HTTP_MERGE_CONSECUTIVE_RANGES", "YES")
 os.environ.setdefault("GDAL_HTTP_MULTIPLEX", "YES")
 os.environ.setdefault("GDAL_HTTP_VERSION", "2")
 
+from rasterio.crs import CRS  # noqa: E402
+from rasterio.vrt import WarpedVRT  # noqa: E402
+from rio_tiler.io import Reader as BaseReader  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers  # noqa: E402
 from titiler.core.factory import TilerFactory  # noqa: E402
+
+# All SDP COGs are EPSG:32613 (UTM 13N). Some daily temperature products
+# were built without embedding the CRS in the GeoTIFF metadata. This
+# custom reader injects the default CRS so TiTiler can still reproject
+# and serve tiles for those files.
+SDP_DEFAULT_CRS = CRS.from_epsg(32613)
+
+
+class SDPReader(BaseReader):
+    """rio-tiler Reader that falls back to EPSG:32613 when the source CRS is missing."""
+
+    def __attrs_post_init__(self):
+        super().__attrs_post_init__()
+        if self.dataset.crs is None or self.crs is None:
+            self.dataset = WarpedVRT(self.dataset, src_crs=SDP_DEFAULT_CRS)
+            self.crs = SDP_DEFAULT_CRS
+            self.bounds = self.dataset.bounds
+
 
 app = FastAPI(title="SDP Browser TiTiler", version="0.1.0")
 
@@ -49,7 +70,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-cog = TilerFactory()
+cog = TilerFactory(reader=SDPReader)
 app.include_router(cog.router, prefix="/cog", tags=["COG"])
 add_exception_handlers(app, DEFAULT_STATUS_CODES)
 
