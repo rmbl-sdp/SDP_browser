@@ -950,7 +950,7 @@
           type: "raster",
           tiles: [tileUrl(lyr)],
           tileSize: 256,
-          bounds: item.bbox,
+          ...(item.bbox ? { bounds: item.bbox } : {}),
         });
         map.addLayer({
           id: mid,
@@ -990,7 +990,7 @@
           type: "raster",
           tiles: [tileUrl(lyr)],
           tileSize: 256,
-          bounds: item.bbox,
+          ...(item.bbox ? { bounds: item.bbox } : {}),
         });
         map.addLayer({
           id: tmpMid, type: "raster", source: tmpSrc,
