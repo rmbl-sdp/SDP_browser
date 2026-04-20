@@ -2383,7 +2383,6 @@
           if (g === "yearly") rasterCall = `sdp_get_raster("${id}", years = ${lyr.date})`;
           else rasterCall = `sdp_get_raster("${id}", date_start = as.Date("${lyr.date}${g === "monthly" ? "-01" : ""}"), date_end = as.Date("${lyr.date}${g === "monthly" ? "-28" : ""}"))`;
         }
-        }
         return `# devtools::install_github('rmbl-sdp/rSDP')
 library(rSDP)
 library(terra)
@@ -2417,7 +2416,6 @@ writeRaster(subset, "${outName}", overwrite = TRUE)
           if (g === "yearly") openCall = `pysdp.open_raster("${id}", years=[${lyr.date}])`;
           else openCall = `pysdp.open_raster("${id}", date_start="${lyr.date}${g === "monthly" ? "-01" : ""}", date_end="${lyr.date}${g === "monthly" ? "-28" : ""}")`;
         }
-        }
         return `# pip install pysdp
 import pysdp
 
@@ -2449,7 +2447,6 @@ subset.rio.to_raster("${outName}")
           const g = item.timeseries?.granularity;
           if (g === "yearly") openCall = `pysdp.open_raster("${id}", years=[${lyr.date}])`;
           else openCall = `pysdp.open_raster("${id}", date_start="${lyr.date}${g === "monthly" ? "-01" : ""}", date_end="${lyr.date}${g === "monthly" ? "-28" : ""}")`;
-        }
         }
         const isRgb = item.kind === "multiband" && lyr.mode === "rgb";
 
@@ -2576,7 +2573,6 @@ subset.rio.to_raster("${outName}")
           const g = item.timeseries?.granularity;
           if (g === "yearly") rasterCall = `sdp_get_raster("${id}", years = ${lyr.date})`;
           else rasterCall = `sdp_get_raster("${id}", date_start = as.Date("${lyr.date}${g === "monthly" ? "-01" : ""}"), date_end = as.Date("${lyr.date}${g === "monthly" ? "-28" : ""}"))`;
-        }
         }
 
         const metaRows = [
