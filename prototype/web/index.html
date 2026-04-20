@@ -1224,12 +1224,14 @@
           lyr.mode = "rgb";
           lyr.bidx = [1, 2, 3];
           lyr.colormap = null;
-          reloadMapLayer(lyr);
-          renderActive();
-          renderMapLegend();
-          if (state.aoi) fetchStats();
-          updateAoiDownloads();
-          updateHash();
+          if (!lyr._pending) {
+            reloadMapLayer(lyr);
+            renderActive();
+            renderMapLegend();
+            if (state.aoi) fetchStats();
+            updateAoiDownloads();
+            updateHash();
+          }
         }
       }
 
@@ -1283,16 +1285,15 @@
       }
 
       function applyAutoRescale(lyr, rescale) {
-        // Only override if the user hasn't manually changed the rescale in the
-        // meantime. We detect that by comparing against the descriptor's
-        // default_rescale — if they match, the user hasn't edited.
         const item = catalogItem(lyr.catalogId);
         if (lyr.rescale !== item.default_rescale && lyr.rescale !== rescale) return;
         lyr.rescale = rescale;
-        reloadMapLayer(lyr);
-        renderMapLegend();
-        renderActive();
-        updateHash();
+        if (!lyr._pending) {
+          reloadMapLayer(lyr);
+          renderMapLegend();
+          renderActive();
+          updateHash();
+        }
       }
 
       // ---------- active layer actions ----------
@@ -1310,20 +1311,18 @@
           year: item.kind === "timeseries" ? (item.default_year ?? item.years[0]) : null,
           mode: item.kind === "multiband" ? (item.default_mode || "rgb") : null,
           bidx: item.kind === "multiband" ? (item.default_bidx || [1, 2, 3]).slice() : null,
+          _pending: true, // tiles deferred until refinement completes
         };
         state.active.unshift(lyr);
-        addMapLayer(lyr);
-        reorderMapLayers();
-        ensureAoiOnTop();
         state.expandedUid = lyr.uid;
-        if (state.active.length === 1) map.fitBounds(item.bbox, { padding: 40, duration: 600 });
+        if (state.active.length === 1 && item.bbox) {
+          map.fitBounds(item.bbox, { padding: 40, duration: 600 });
+        }
         renderAll();
-        if (state.aoi) fetchStats();
-        // Refine the default stretch once if it came from a keyword heuristic
-        // rather than real statistics; hits TiTiler /cog/statistics on an
-        // overview so typical latency is a few hundred ms.
-        // Probe the real COG first so we know whether it's actually multiband
-        // RGB; autoRescale only makes sense for single-band colormap layers.
+
+        // Refine (probe band count + auto-rescale) BEFORE adding tiles to
+        // the map so the user sees one clean render with correct styling
+        // instead of 2–3 flashing reloads.
         (async () => {
           await probeCogInfo(lyr);
           const current = catalogItem(lyr.catalogId);
@@ -1331,6 +1330,13 @@
           if (!isRgb && current?.rescale_source !== "stac") {
             await autoRescale(lyr);
           }
+          // Now add tiles with the refined params — single render.
+          delete lyr._pending;
+          addMapLayer(lyr);
+          reorderMapLayers();
+          ensureAoiOnTop();
+          renderAll();
+          if (state.aoi) fetchStats();
         })();
       }
       function removeActive(uid) {
