@@ -904,6 +904,21 @@
       const mapLayerId = (uid) => `cog-${uid}`;
       const mapSourceId = (uid) => `cog-${uid}`;
 
+      // Convert between physical (display) and raw (tile) rescale values.
+      function toPhysical(raw, item) {
+        const s = item?._scale ?? 1, o = item?._offset ?? 0;
+        return raw * s + o;
+      }
+      function toRaw(physical, item) {
+        const s = item?._scale ?? 1, o = item?._offset ?? 0;
+        return (physical - o) / s;
+      }
+      function rescaleToRaw(physicalRescale, item) {
+        if (!item?._scale || item._scale === 1) return physicalRescale;
+        const [lo, hi] = physicalRescale.split(",").map(Number);
+        return `${formatBound(toRaw(lo, item))},${formatBound(toRaw(hi, item))}`;
+      }
+
       function resolveCogUrl(lyr) {
         const item = catalogItem(lyr.catalogId);
         if (item.kind === "timeseries" && item.timeseries) {
@@ -927,7 +942,7 @@
         const item = catalogItem(lyr.catalogId);
         const u = new URL(`${TITILER}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png`);
         u.searchParams.set("url", resolveCogUrl(lyr));
-        u.searchParams.set("rescale", lyr.rescale);
+        u.searchParams.set("rescale", rescaleToRaw(lyr.rescale, item));
         const spec = renderSpec(lyr, item);
         spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
         if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", lyr.colormap);
@@ -1285,6 +1300,12 @@
         if (info.nodata != null && info.nodata !== "none") {
           item._nodata = info.nodata;
         }
+        // Stash scale/offset for physical-unit display. The tile URL sends
+        // raw (unscaled) rescale values; the UI shows physical values.
+        if (typeof info.scale === "number" && info.scale !== 0) {
+          item._scale = info.scale;
+          item._offset = typeof info.offset === "number" ? info.offset : 0;
+        }
         const count = typeof info.count === "number" ? info.count : null;
         const dtype = info.dtype || "";
         if (count == null) return;
@@ -1350,11 +1371,14 @@
           const bandKeys = Object.keys(data);
           const first = data[bandKeys[0]];
           if (!first) throw new Error("no bands in statistics response");
-          const lo = first.percentile_2 ?? first.min;
-          const hi = first.percentile_98 ?? first.max;
-          if (!isFinite(lo) || !isFinite(hi) || lo === hi) {
-            throw new Error(`unusable bounds: ${lo},${hi}`);
+          const rawLo = first.percentile_2 ?? first.min;
+          const rawHi = first.percentile_98 ?? first.max;
+          if (!isFinite(rawLo) || !isFinite(rawHi) || rawLo === rawHi) {
+            throw new Error(`unusable bounds: ${rawLo},${rawHi}`);
           }
+          // Convert to physical units for display; tileUrl converts back.
+          const lo = toPhysical(rawLo, item);
+          const hi = toPhysical(rawHi, item);
           const rescale = `${formatBound(lo)},${formatBound(hi)}`;
           autoRescaleCache.set(cacheKey, rescale);
           applyAutoRescale(lyr, rescale);
@@ -2306,7 +2330,7 @@
         const u = new URL(`${TITILER}/cog/bbox/${bboxPath}.${format}`);
         u.searchParams.set("url", cogUrl);
         if (format === "png") {
-          u.searchParams.set("rescale", lyr.rescale);
+          u.searchParams.set("rescale", rescaleToRaw(lyr.rescale, item));
           const spec = renderSpec(lyr, item);
           spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
           if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", lyr.colormap);
