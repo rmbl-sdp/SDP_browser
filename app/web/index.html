@@ -1792,13 +1792,27 @@
             </div>
             ${isExpanded ? renderActBodyHTML(lyr, item) : ""}`;
 
-          el.draggable = true;
           el.dataset.uid = String(lyr.uid);
+          // Only allow drag when initiated from the grip handle, so dragging
+          // doesn't interfere with opacity sliders and other controls.
+          const grip = el.querySelector(".grip");
+          if (grip) {
+            grip.addEventListener("mousedown", () => { el.draggable = true; });
+            grip.addEventListener("touchstart", () => { el.draggable = true; }, { passive: true });
+          }
           el.addEventListener("dragstart", (ev) => {
+            if (!el.draggable) { ev.preventDefault(); return; }
             dragUid = lyr.uid;
             ev.dataTransfer.effectAllowed = "move";
             try { ev.dataTransfer.setData("text/plain", String(lyr.uid)); } catch {}
             el.classList.add("dragging");
+          });
+          el.addEventListener("dragend", (ev) => {
+            el.draggable = false;
+            el.classList.remove("dragging");
+            document.querySelectorAll(".act-item.drag-over,.act-item.drag-over-after")
+              .forEach((e) => e.classList.remove("drag-over", "drag-over-after"));
+            dragUid = null;
           });
           el.addEventListener("dragover", (ev) => {
             if (dragUid == null || dragUid === lyr.uid) return;
@@ -1818,12 +1832,7 @@
             el.classList.remove("drag-over", "drag-over-after");
             dropOnto(lyr.uid, after);
           });
-          el.addEventListener("dragend", () => {
-            el.classList.remove("dragging");
-            document.querySelectorAll(".act-item.drag-over,.act-item.drag-over-after")
-              .forEach((e) => e.classList.remove("drag-over", "drag-over-after"));
-            dragUid = null;
-          });
+          // dragend handled above (near dragstart)
 
           el.querySelector(".act-row").onclick = (ev) => {
             const b = ev.target.closest("button");
