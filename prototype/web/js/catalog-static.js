@@ -155,6 +155,12 @@ const LARGE_COLLECTION_THRESHOLD = 30;
 
 // --- descriptor builder ---
 
+function isGlobalBbox(bbox) {
+  if (!bbox || bbox.length < 4) return true;
+  const [minx, miny, maxx, maxy] = bbox;
+  return (maxx - minx) > 350 || (maxy - miny) > 170;
+}
+
 function buildDescriptor({ collection, items, collectionUrl, fastYears }) {
   const firstItem = items[0];
   const asset = firstItem?.assets?.data || null;
@@ -178,7 +184,8 @@ function buildDescriptor({ collection, items, collectionUrl, fastYears }) {
     gsd: collection.summaries?.gsd?.[0] ?? firstItem?.properties?.gsd ?? null,
     epsg: firstItem?.properties?.["proj:epsg"] ?? collection.summaries?.["proj:epsg"]?.[0] ?? null,
     temporal: collection.extent?.temporal?.interval?.[0] || [null, null],
-    bbox: firstItem?.bbox || collection.extent?.spatial?.bbox?.[0] || null,
+    bbox: (!isGlobalBbox(firstItem?.bbox) ? firstItem.bbox : null)
+      || (!isGlobalBbox(collection.extent?.spatial?.bbox?.[0]) ? collection.extent.spatial.bbox[0] : null),
     units: bands[0]?.unit || null,
     bandCount,
     dtype,
