@@ -443,6 +443,91 @@
       .maplibregl-ctrl-group button {
         background-color: transparent !important;
       }
+      /* ---------- Time-series controls ---------- */
+      .ts-control { margin-top: 8px; }
+      .ts-stepper {
+        display: flex; align-items: center; gap: 6px;
+        margin-bottom: 6px;
+      }
+      .ts-stepper button {
+        background: #333942; color: var(--text); border: 1px solid var(--border);
+        border-radius: 3px; padding: 3px 8px; font-size: 11px;
+        width: auto; font-weight: normal; cursor: pointer;
+      }
+      .ts-stepper button:hover { border-color: var(--accent); }
+      .ts-label {
+        flex: 1; text-align: center;
+        font-size: 12px; font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        cursor: pointer;
+      }
+      .ts-label:hover { color: var(--accent); }
+      .ts-picker { margin-top: 4px; }
+      .ts-year-row {
+        display: flex; flex-wrap: wrap; gap: 3px;
+      }
+      .ts-yr {
+        background: #1b1f24; color: var(--muted); border: 1px solid var(--border);
+        border-radius: 3px; padding: 2px 6px; font-size: 10px;
+        width: auto; cursor: pointer; font-weight: normal;
+      }
+      .ts-yr:hover { border-color: var(--accent); color: var(--text); }
+      .ts-yr.active { background: var(--accent); color: #0b1220; border-color: var(--accent); font-weight: 600; }
+      .ts-month-year-row {
+        display: flex; align-items: center; gap: 6px;
+        margin-bottom: 4px;
+      }
+      .ts-month-year-row button {
+        background: transparent; color: var(--muted); border: 1px solid var(--border);
+        border-radius: 3px; padding: 2px 6px; font-size: 10px;
+        width: auto; cursor: pointer; font-weight: normal;
+      }
+      .ts-month-year-row button:hover { color: var(--text); border-color: var(--accent); }
+      .ts-month-year-row span { flex: 1; text-align: center; font-size: 11px; font-weight: 600; }
+      .ts-month-grid {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px;
+      }
+      .ts-mo {
+        background: #1b1f24; color: var(--text); border: 1px solid var(--border);
+        border-radius: 3px; padding: 3px; font-size: 10px;
+        width: auto; cursor: pointer; font-weight: normal; text-align: center;
+      }
+      .ts-mo:hover:not(:disabled) { border-color: var(--accent); }
+      .ts-mo.active { background: var(--accent); color: #0b1220; border-color: var(--accent); font-weight: 600; }
+      .ts-mo.unavail { color: var(--border); cursor: default; }
+      .ts-cal-nav {
+        display: flex; align-items: center; gap: 6px;
+        margin-bottom: 4px;
+      }
+      .ts-cal-nav button {
+        background: transparent; color: var(--muted); border: 1px solid var(--border);
+        border-radius: 3px; padding: 2px 6px; font-size: 10px;
+        width: auto; cursor: pointer; font-weight: normal;
+      }
+      .ts-cal-nav button:hover { color: var(--text); border-color: var(--accent); }
+      .ts-cal-nav span { flex: 1; text-align: center; font-size: 11px; font-weight: 600; }
+      .ts-cal-header {
+        display: grid; grid-template-columns: repeat(7, 1fr);
+        text-align: center; font-size: 9px; color: var(--muted);
+        margin-bottom: 2px;
+      }
+      .ts-cal-grid {
+        display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+      }
+      .ts-cal-blank { }
+      .ts-cal-day {
+        background: transparent; color: var(--border);
+        border: 1px solid transparent; border-radius: 3px;
+        padding: 2px; font-size: 10px; text-align: center;
+        width: auto; font-weight: normal; cursor: default;
+      }
+      .ts-cal-day.avail {
+        color: var(--text); cursor: pointer;
+        border-color: var(--border);
+      }
+      .ts-cal-day.avail:hover { border-color: var(--accent); }
+      .ts-cal-day.active { background: var(--accent); color: #0b1220; border-color: var(--accent); font-weight: 600; }
+
       /* ---------- Discovery drawer ---------- */
       #discoveryDrawer {
         position: fixed; inset: 0; z-index: 100;
@@ -699,7 +784,7 @@
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
     <script type="module">
-      import { loadRepo, makeInMemoryRepo, stacBrowserLink, invalidateCache } from "./js/catalog-static.js";
+      import { loadRepo, makeInMemoryRepo, stacBrowserLink, invalidateCache, resolveTimeseriesUrl, formatDateLabel } from "./js/catalog-static.js";
 
       const STAC_ROOT = "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json";
 
@@ -821,9 +906,9 @@
 
       function resolveCogUrl(lyr) {
         const item = catalogItem(lyr.catalogId);
-        if (item.kind === "timeseries") {
-          const y = lyr.year ?? item.default_year ?? item.years[0];
-          return item.url_template.replace("{year}", y);
+        if (item.kind === "timeseries" && item.timeseries) {
+          const dateStr = lyr.date ?? item.timeseries.default_date ?? item.timeseries.dates[0];
+          return resolveTimeseriesUrl(item.timeseries.url_template, dateStr);
         }
         return item.cog_url;
       }
@@ -1308,7 +1393,8 @@
           opacity: 0.85,
           colormap: item.default_colormap || "viridis",
           rescale: item.default_rescale || "0,1",
-          year: item.kind === "timeseries" ? (item.default_year ?? item.years[0]) : null,
+          date: item.kind === "timeseries" && item.timeseries
+            ? (item.timeseries.default_date ?? item.timeseries.dates[0]) : null,
           mode: item.kind === "multiband" ? (item.default_mode || "rgb") : null,
           bidx: item.kind === "multiband" ? (item.default_bidx || [1, 2, 3]).slice() : null,
           _pending: true, // tiles deferred until refinement completes
@@ -1713,6 +1799,187 @@
         renderMapLegend();
       }
 
+      // ---- time-series control HTML (stepper + picker) ----
+      const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+      function renderTimeseriesControlHTML(lyr, item) {
+        const ts = item.timeseries;
+        const g = ts.granularity;
+        const dateLabel = formatDateLabel(lyr.date, g);
+        return `
+          <div class="ts-control" data-granularity="${g}">
+            <div class="ts-stepper">
+              <button data-k="tsPrev" title="Previous">◀</button>
+              <span class="ts-label" data-k="tsLabel">${dateLabel}</span>
+              <button data-k="tsNext" title="Next">▶</button>
+            </div>
+            <div class="ts-picker" data-k="tsPicker">
+              ${g === "yearly" ? renderYearPicker(lyr, ts) : ""}
+              ${g === "monthly" ? renderMonthPicker(lyr, ts) : ""}
+              ${g === "daily" ? renderCalendarPicker(lyr, ts) : ""}
+            </div>
+          </div>`;
+      }
+
+      function renderYearPicker(lyr, ts) {
+        const years = [...new Set(ts.dates)].sort();
+        return `<div class="ts-year-row">${years.map((y) =>
+          `<button class="ts-yr${y === lyr.date ? " active" : ""}" data-date="${y}">${y}</button>`
+        ).join("")}</div>`;
+      }
+
+      function renderMonthPicker(lyr, ts) {
+        const dateSet = new Set(ts.dates);
+        const years = [...new Set(ts.dates.map((d) => d.slice(0, 4)))].sort();
+        const curYear = lyr.date ? lyr.date.slice(0, 4) : years[0];
+        return `
+          <div class="ts-month-year-row">
+            <button data-k="mpYearPrev">◀</button>
+            <span data-k="mpYear">${curYear}</span>
+            <button data-k="mpYearNext">▶</button>
+          </div>
+          <div class="ts-month-grid">${MONTH_NAMES.map((m, i) => {
+            const ds = `${curYear}-${String(i + 1).padStart(2, "0")}`;
+            const avail = dateSet.has(ds);
+            const sel = ds === lyr.date;
+            return `<button class="ts-mo${sel ? " active" : ""}${avail ? "" : " unavail"}" data-date="${ds}" ${avail ? "" : "disabled"}>${m}</button>`;
+          }).join("")}</div>`;
+      }
+
+      function renderCalendarPicker(lyr, ts) {
+        const dateSet = new Set(ts.dates);
+        const cur = lyr.date || ts.default_date || ts.dates[0];
+        const [cy, cm] = cur.split("-").map(Number);
+        return renderCalendarMonth(cy, cm, dateSet, cur);
+      }
+
+      function renderCalendarMonth(year, month, dateSet, selectedDate) {
+        const firstDay = new Date(year, month - 1, 1).getDay(); // 0=Sun
+        const daysInMonth = new Date(year, month, 0).getDate();
+        let cells = "";
+        for (let blank = 0; blank < firstDay; blank++) cells += `<span class="ts-cal-blank"></span>`;
+        for (let d = 1; d <= daysInMonth; d++) {
+          const ds = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+          const avail = dateSet.has(ds);
+          const sel = ds === selectedDate;
+          cells += `<button class="ts-cal-day${sel ? " active" : ""}${avail ? " avail" : ""}" data-date="${ds}" ${avail ? "" : "disabled"}>${d}</button>`;
+        }
+        return `
+          <div class="ts-cal-nav">
+            <button data-k="calPrev">◀</button>
+            <span data-k="calMonthLabel">${MONTH_NAMES[month - 1]} ${year}</span>
+            <button data-k="calNext">▶</button>
+          </div>
+          <div class="ts-cal-header">
+            ${"Sun Mon Tue Wed Thu Fri Sat".split(" ").map((d) => `<span>${d}</span>`).join("")}
+          </div>
+          <div class="ts-cal-grid" data-year="${year}" data-month="${month}">
+            ${cells}
+          </div>`;
+      }
+
+      function changeDate(lyr, newDate) {
+        lyr.date = newDate;
+        reloadMapLayer(lyr);
+        renderMapLegend();
+        renderActive();
+        if (state.aoi) fetchStats();
+        updateAoiDownloads();
+        updateHash();
+      }
+
+      function wireTimeseriesControl(body, lyr, item) {
+        const ts = item.timeseries;
+        const dates = ts.dates;
+        const curIdx = () => Math.max(0, dates.indexOf(lyr.date));
+
+        // Stepper prev/next
+        body.querySelector('[data-k="tsPrev"]')?.addEventListener("click", () => {
+          const i = curIdx();
+          if (i > 0) changeDate(lyr, dates[i - 1]);
+        });
+        body.querySelector('[data-k="tsNext"]')?.addEventListener("click", () => {
+          const i = curIdx();
+          if (i < dates.length - 1) changeDate(lyr, dates[i + 1]);
+        });
+
+        // Picker interactions (by granularity)
+        // Yearly: each year button
+        body.querySelectorAll(".ts-yr").forEach((btn) => {
+          btn.addEventListener("click", () => changeDate(lyr, btn.dataset.date));
+        });
+
+        // Monthly: year navigation + month buttons
+        const mpYear = body.querySelector('[data-k="mpYear"]');
+        if (mpYear) {
+          let viewYear = lyr.date ? +lyr.date.slice(0, 4) : +dates[0].slice(0, 4);
+          const yearRange = [...new Set(dates.map((d) => +d.slice(0, 4)))].sort((a, b) => a - b);
+          const refreshMonths = () => {
+            mpYear.textContent = viewYear;
+            const dateSet = new Set(dates);
+            body.querySelector(".ts-month-grid").innerHTML = MONTH_NAMES.map((m, i) => {
+              const ds = `${viewYear}-${String(i + 1).padStart(2, "0")}`;
+              const avail = dateSet.has(ds);
+              const sel = ds === lyr.date;
+              return `<button class="ts-mo${sel ? " active" : ""}${avail ? "" : " unavail"}" data-date="${ds}" ${avail ? "" : "disabled"}>${m}</button>`;
+            }).join("");
+            body.querySelectorAll(".ts-mo:not(.unavail)").forEach((btn) => {
+              btn.addEventListener("click", () => changeDate(lyr, btn.dataset.date));
+            });
+          };
+          body.querySelector('[data-k="mpYearPrev"]').addEventListener("click", () => {
+            const i = yearRange.indexOf(viewYear);
+            if (i > 0) { viewYear = yearRange[i - 1]; refreshMonths(); }
+          });
+          body.querySelector('[data-k="mpYearNext"]').addEventListener("click", () => {
+            const i = yearRange.indexOf(viewYear);
+            if (i < yearRange.length - 1) { viewYear = yearRange[i + 1]; refreshMonths(); }
+          });
+        }
+
+        // Daily/irregular: calendar navigation + day buttons
+        const calGrid = body.querySelector(".ts-cal-grid");
+        if (calGrid) {
+          let viewYear = +calGrid.dataset.year;
+          let viewMonth = +calGrid.dataset.month;
+          const dateSet = new Set(dates);
+
+          const refreshCal = () => {
+            const picker = body.querySelector('[data-k="tsPicker"]');
+            picker.innerHTML = renderCalendarMonth(viewYear, viewMonth, dateSet, lyr.date);
+            body.querySelector('[data-k="calMonthLabel"]').textContent =
+              `${MONTH_NAMES[viewMonth - 1]} ${viewYear}`;
+            body.querySelectorAll(".ts-cal-day.avail").forEach((btn) => {
+              btn.addEventListener("click", () => changeDate(lyr, btn.dataset.date));
+            });
+            body.querySelector('[data-k="calPrev"]').addEventListener("click", () => {
+              viewMonth -= 1;
+              if (viewMonth < 1) { viewMonth = 12; viewYear -= 1; }
+              refreshCal();
+            });
+            body.querySelector('[data-k="calNext"]').addEventListener("click", () => {
+              viewMonth += 1;
+              if (viewMonth > 12) { viewMonth = 1; viewYear += 1; }
+              refreshCal();
+            });
+          };
+          // Wire initial day buttons
+          body.querySelectorAll(".ts-cal-day.avail").forEach((btn) => {
+            btn.addEventListener("click", () => changeDate(lyr, btn.dataset.date));
+          });
+          body.querySelector('[data-k="calPrev"]')?.addEventListener("click", () => {
+            viewMonth -= 1;
+            if (viewMonth < 1) { viewMonth = 12; viewYear -= 1; }
+            refreshCal();
+          });
+          body.querySelector('[data-k="calNext"]')?.addEventListener("click", () => {
+            viewMonth += 1;
+            if (viewMonth > 12) { viewMonth = 1; viewYear += 1; }
+            refreshCal();
+          });
+        }
+      }
+
       function renderActBodyHTML(lyr, item) {
         const isTs = item.kind === "timeseries";
         const isMb = item.kind === "multiband";
@@ -1772,15 +2039,7 @@
           </div>
           <label>Opacity <span class="value">${Math.round(lyr.opacity * 100)}%</span></label>
           <input data-k="opacity" type="range" min="0" max="100" value="${Math.round(lyr.opacity * 100)}" />
-          ${isTs ? `
-            <label>Year <span class="value" data-role="yearLabel">${lyr.year}</span></label>
-            <input data-k="year" type="range" min="0" max="${item.years.length - 1}"
-                   step="1" value="${item.years.indexOf(lyr.year)}" />
-            <div class="time-nav">
-              <button data-k="prev">◀ prev</button>
-              <button data-k="next">next ▶</button>
-            </div>
-          ` : ""}
+          ${isTs && item.timeseries ? renderTimeseriesControlHTML(lyr, item) : ""}
         </div>`;
       }
 
@@ -1876,26 +2135,8 @@
           updateHash();
         });
 
-        if (item.kind === "timeseries") {
-          const yearSlider = body.querySelector('[data-k="year"]');
-          const yearLabel = body.querySelector('[data-role="yearLabel"]');
-          yearSlider.addEventListener("input", (e) => {
-            lyr.year = item.years[+e.target.value];
-            yearLabel.textContent = lyr.year;
-            reloadMapLayer(lyr);
-            renderMapLegend();
-            if (state.aoi) fetchStats();
-            updateAoiDownloads();
-            updateHash();
-          });
-          body.querySelector('[data-k="prev"]').addEventListener("click", () => {
-            yearSlider.value = Math.max(0, +yearSlider.value - 1);
-            yearSlider.dispatchEvent(new Event("input"));
-          });
-          body.querySelector('[data-k="next"]').addEventListener("click", () => {
-            yearSlider.value = Math.min(+yearSlider.max, +yearSlider.value + 1);
-            yearSlider.dispatchEvent(new Event("input"));
-          });
+        if (item.kind === "timeseries" && item.timeseries) {
+          wireTimeseriesControl(body, lyr, item);
         }
       }
 
@@ -1916,10 +2157,10 @@
           const [mn, mx] = lyr.rescale.split(",");
           const stops = COLORMAPS[lyr.colormap] || COLORMAPS.viridis;
           const gradient = `linear-gradient(to right, ${stops.join(",")})`;
-          const yearBit = lyr.year != null ? ` · ${lyr.year}` : "";
+          const dateBit = lyr.date != null ? ` · ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "";
           return `<div class="legend-entry">
             <div class="lt">${item.title}</div>
-            <div class="lmeta">${lyr.colormap}${yearBit}${item.units ? ` · ${item.units}` : ""}</div>
+            <div class="lmeta">${lyr.colormap}${dateBit}${item.units ? ` · ${item.units}` : ""}</div>
             <div class="bar" style="background:${gradient}"></div>
             <div class="labels"><span>${mn}</span><span>${mx}</span></div>
           </div>`;
@@ -2118,9 +2359,9 @@
         const kmPerDegLat = 111.32;
         const kmPerDegLon = kmPerDegLat * Math.cos(midLat);
         const areaKm2 = (maxx - minx) * kmPerDegLon * (maxy - miny) * kmPerDegLat;
-        const yearBit = lyr.year != null ? ` · ${lyr.year}` : "";
+        const dateBit = lyr.date != null ? ` · ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "";
         const baseInfo =
-          `${item.title}${yearBit} · ` +
+          `${item.title}${dateBit} · ` +
           `${areaKm2 < 1 ? (areaKm2 * 100).toFixed(1) + " ha" : areaKm2.toFixed(2) + " km²"}`;
         info.textContent = baseInfo;
         info.dataset.base = baseInfo;
@@ -2132,8 +2373,11 @@
         const [minx, miny, maxx, maxy] = bbox;
         const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
         let rasterCall = `sdp_get_raster("${id}")`;
-        if (item.kind === "timeseries" && lyr.year != null) {
-          rasterCall = `sdp_get_raster("${id}", years = ${lyr.year})`;
+        if (item.kind === "timeseries" && lyr.date != null) {
+          const g = item.timeseries?.granularity;
+          if (g === "yearly") rasterCall = `sdp_get_raster("${id}", years = ${lyr.date})`;
+          else rasterCall = `sdp_get_raster("${id}", date_start = as.Date("${lyr.date}${g === "monthly" ? "-01" : ""}"), date_end = as.Date("${lyr.date}${g === "monthly" ? "-28" : ""}"))`;
+        }
         }
         return `# devtools::install_github('rmbl-sdp/rSDP')
 library(rSDP)
@@ -2163,8 +2407,11 @@ writeRaster(subset, "${outName}", overwrite = TRUE)
         const [minx, miny, maxx, maxy] = bbox;
         const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
         let openCall = `pysdp.open_raster("${id}")`;
-        if (item.kind === "timeseries" && lyr.year != null) {
-          openCall = `pysdp.open_raster("${id}", years=[${lyr.year}])`;
+        if (item.kind === "timeseries" && lyr.date != null) {
+          const g = item.timeseries?.granularity;
+          if (g === "yearly") openCall = `pysdp.open_raster("${id}", years=[${lyr.date}])`;
+          else openCall = `pysdp.open_raster("${id}", date_start="${lyr.date}${g === "monthly" ? "-01" : ""}", date_end="${lyr.date}${g === "monthly" ? "-28" : ""}")`;
+        }
         }
         return `# pip install pysdp
 import pysdp
@@ -2193,8 +2440,11 @@ subset.rio.to_raster("${outName}")
         const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
         const nbName = `${cogBasename(resolveCogUrl(lyr))}_AOI.ipynb`;
         let openCall = `pysdp.open_raster("${id}")`;
-        if (item.kind === "timeseries" && lyr.year != null) {
-          openCall = `pysdp.open_raster("${id}", years=[${lyr.year}])`;
+        if (item.kind === "timeseries" && lyr.date != null) {
+          const g = item.timeseries?.granularity;
+          if (g === "yearly") openCall = `pysdp.open_raster("${id}", years=[${lyr.date}])`;
+          else openCall = `pysdp.open_raster("${id}", date_start="${lyr.date}${g === "monthly" ? "-01" : ""}", date_end="${lyr.date}${g === "monthly" ? "-28" : ""}")`;
+        }
         }
         const isRgb = item.kind === "multiband" && lyr.mode === "rgb";
 
@@ -2317,8 +2567,11 @@ subset.rio.to_raster("${outName}")
         const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
         const rmdName = `${cogBasename(resolveCogUrl(lyr))}_AOI.Rmd`;
         let rasterCall = `sdp_get_raster("${id}")`;
-        if (item.kind === "timeseries" && lyr.year != null) {
-          rasterCall = `sdp_get_raster("${id}", years = ${lyr.year})`;
+        if (item.kind === "timeseries" && lyr.date != null) {
+          const g = item.timeseries?.granularity;
+          if (g === "yearly") rasterCall = `sdp_get_raster("${id}", years = ${lyr.date})`;
+          else rasterCall = `sdp_get_raster("${id}", date_start = as.Date("${lyr.date}${g === "monthly" ? "-01" : ""}"), date_end = as.Date("${lyr.date}${g === "monthly" ? "-28" : ""}"))`;
+        }
         }
 
         const metaRows = [
@@ -2485,7 +2738,7 @@ message("Saved to ${outName}")
         const rgbBandColors = { b1: "#e15759", b2: "#59a14f", b3: "#4e79a7" };
         const header = document.createElement("div");
         header.style.cssText = "font-size:11px;color:var(--muted);margin-bottom:6px;";
-        header.textContent = `${item.title}` + (lyr.year != null ? `  ·  ${lyr.year}` : "");
+        header.textContent = `${item.title}` + (lyr.date != null ? `  ·  ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "");
         container.appendChild(header);
         bandKeys.forEach((bk) => {
           const s = stats[bk];
@@ -2599,7 +2852,7 @@ message("Saved to ${outName}")
             `o=${Math.round(l.opacity * 100)}`,
             `v=${l.visible ? 1 : 0}`,
           ];
-          if (l.year != null) p.push(`y=${l.year}`);
+          if (l.date != null) p.push(`d=${encodeURIComponent(l.date)}`);
           if (l.uid === state.expandedUid) p.push("e=1");
           return p.join("&");
         });
@@ -2811,7 +3064,7 @@ message("Saved to ${outName}")
                 colormap: kv.c || item.default_colormap || "viridis",
                 rescale: kv.r || item.default_rescale || "0,1",
                 year: item.kind === "timeseries"
-                  ? (kv.y ? +kv.y : (item.default_year ?? item.years[0]))
+                  ? (kv.d || kv.y || item.timeseries?.default_date || item.timeseries?.dates?.[0])
                   : null,
                 mode: item.kind === "multiband" ? (item.default_mode || "rgb") : null,
                 bidx: item.kind === "multiband" ? (item.default_bidx || [1, 2, 3]).slice() : null,

@@ -106,35 +106,124 @@ async function parallelMap(items, limit, fn) {
 }
 
 // --- time-series detection ---
+// Detects yearly / monthly / daily granularity from item link IDs and
+// builds a multi-token URL template ({year}, {month}, {doy}).
 
-// Parse 4-digit years from item link hrefs / IDs without fetching items.
-// This is the key to making the walk fast: a daily time-series collection
-// may have thousands of item links, but we only need to know which *years*
-// are covered (the UI exposes a year slider, not a day slider).
-function parseYearsFromLinks(links) {
-  const years = new Set();
-  for (const l of links) {
-    const href = l.href || "";
-    const m = href.match(/(\d{4})/);
-    if (m) {
-      const y = parseInt(m[1], 10);
-      if (y >= 1950 && y <= 2100) years.add(y);
+const LARGE_COLLECTION_THRESHOLD = 30;
+
+// Day-of-year for a given date.
+function dayOfYear(year, month, day) {
+  const d = new Date(Date.UTC(year, month - 1, day));
+  const jan1 = new Date(Date.UTC(year, 0, 1));
+  return Math.floor((d - jan1) / 86400000) + 1;
+}
+
+// Parse the date-like numeric suffix from an item link href.
+// Returns { raw, year, month?, day?, doy?, dateStr } or null.
+function parseLinkDate(href) {
+  // Match the longest trailing digit sequence before the / folder separator.
+  // e.g. "./R4D004_20011101/..." → captures "20011101"
+  //      "./R4D003_2001/..."     → captures "2001"
+  //      "./R4D006_200111/..."   → captures "200111"
+  const m = (href || "").match(/_(\d{4,8})\//);
+  if (!m) return null;
+  const raw = m[1];
+  if (raw.length === 8) {
+    const y = +raw.slice(0, 4), mo = +raw.slice(4, 6), d = +raw.slice(6, 8);
+    if (y >= 1950 && y <= 2100 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+      const doy = dayOfYear(y, mo, d);
+      return { raw, year: y, month: mo, day: d, doy, dateStr: `${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}` };
     }
   }
-  return [...years].sort((a, b) => a - b);
+  if (raw.length === 6) {
+    const y = +raw.slice(0, 4), mo = +raw.slice(4, 6);
+    if (y >= 1950 && y <= 2100 && mo >= 1 && mo <= 12)
+      return { raw, year: y, month: mo, dateStr: `${y}-${String(mo).padStart(2,"0")}` };
+  }
+  if (raw.length === 4) {
+    const y = +raw;
+    if (y >= 1950 && y <= 2100)
+      return { raw, year: y, dateStr: String(y) };
+  }
+  return null;
 }
 
-// Build a URL template from a sample item's asset href + a known year.
-function buildUrlTemplate(sampleHref, sampleYear) {
-  if (!sampleHref || !sampleYear) return null;
-  const yearStr = String(sampleYear);
+// Detect granularity and build the sorted dates array from item links.
+function detectDatesFromLinks(links) {
+  const parsed = [];
+  for (const l of links) {
+    const d = parseLinkDate(l.href);
+    if (d) parsed.push(d);
+  }
+  if (parsed.length < 2) return null;
+  const hasDay = parsed.every((d) => d.day != null);
+  const hasMonth = parsed.every((d) => d.month != null);
+  const granularity = hasDay ? "daily" : hasMonth ? "monthly" : "yearly";
+  const dates = [...new Set(parsed.map((d) => d.dateStr))].sort();
+  return { granularity, dates, sampleParsed: parsed[0] };
+}
+
+// Build a multi-token URL template from a sample item's COG href.
+function buildTimeseriesTemplate(sampleHref, sampleParsed) {
+  if (!sampleHref || !sampleParsed) return null;
+  let tmpl = sampleHref;
+
+  // Year (4 digits, standalone)
+  const yearStr = String(sampleParsed.year);
   const yearRe = new RegExp(`(^|[^0-9])${yearStr}([^0-9]|$)`, "g");
-  let count = 0;
-  const tmpl = sampleHref.replace(yearRe, (_, a, b) => { count++; return `${a}{year}${b}`; });
-  return count === 1 ? tmpl : null;
+  let yearCount = 0;
+  tmpl = tmpl.replace(yearRe, (_, a, b) => { yearCount++; return `${a}{year}${b}`; });
+  if (yearCount !== 1) return null;
+
+  // DOY (3-4 digits, for daily granularity)
+  if (sampleParsed.doy != null) {
+    const doy4 = String(sampleParsed.doy).padStart(4, "0");
+    const doy3 = String(sampleParsed.doy).padStart(3, "0");
+    if (tmpl.includes(doy4)) tmpl = tmpl.replace(doy4, "{doy}");
+    else if (tmpl.includes(doy3)) tmpl = tmpl.replace(doy3, "{doy}");
+  }
+
+  // Month (2 digits, for monthly granularity; anchored to _MM_ or _month_MM_)
+  if (sampleParsed.month != null && !tmpl.includes("{doy}")) {
+    const mm = String(sampleParsed.month).padStart(2, "0");
+    const monthRe = new RegExp(`(_(?:month_)?)${mm}(_)`, "g");
+    tmpl = tmpl.replace(monthRe, `$1{month}$2`);
+  }
+
+  return tmpl;
 }
 
-function buildTimeseries(items) {
+// Resolve a date string + template into a COG URL.
+export function resolveTimeseriesUrl(template, dateStr) {
+  if (!template || !dateStr) return null;
+  const parts = dateStr.split("-");
+  let url = template.replace("{year}", parts[0]);
+  if (parts.length >= 2 && template.includes("{month}")) {
+    url = url.replace("{month}", parts[1]);
+  }
+  if (parts.length === 3 && template.includes("{doy}")) {
+    const doy = dayOfYear(+parts[0], +parts[1], +parts[2]);
+    // Match the padding used in the template (check for 4-digit vs 3-digit)
+    const pad = template.includes("{doy}") && /\d{4}/.test(template.split("{doy}")[0].slice(-1) + "0000")
+      ? 4 : (/day_\{doy\}/.test(template) ? 4 : 3);
+    url = url.replace("{doy}", String(doy).padStart(pad, "0"));
+  }
+  return url;
+}
+
+// Format a date string for human display.
+export function formatDateLabel(dateStr, granularity) {
+  if (!dateStr) return "–";
+  const parts = dateStr.split("-");
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  if (granularity === "yearly") return parts[0];
+  if (granularity === "monthly") return `${MONTHS[+parts[1] - 1]} ${parts[0]}`;
+  return `${MONTHS[+parts[1] - 1]} ${+parts[2]}, ${parts[0]}`;
+}
+
+// Legacy: still used by the standard-path for small multi-item collections
+// that were fetched in full (not fast-path).
+function buildTimeseriesFromItems(items) {
   const yearsByHref = new Map();
   for (const it of items) {
     const dt = it.properties?.datetime || it.properties?.start_datetime;
@@ -144,14 +233,20 @@ function buildTimeseries(items) {
     if (isFinite(y)) yearsByHref.set(href, y);
   }
   const years = [...new Set([...yearsByHref.values()])].sort((a, b) => a - b);
-  if (years.length < 2) return { url_template: null, years };
+  if (years.length < 2) return null;
   const [firstHref, firstYear] = [...yearsByHref.entries()][0];
-  return { url_template: buildUrlTemplate(firstHref, firstYear), years };
+  const yearStr = String(firstYear);
+  const yearRe = new RegExp(`(^|[^0-9])${yearStr}([^0-9]|$)`, "g");
+  let count = 0;
+  const tmpl = firstHref.replace(yearRe, (_, a, b) => { count++; return `${a}{year}${b}`; });
+  if (count !== 1) return null;
+  return {
+    granularity: "yearly",
+    dates: years.map(String),
+    url_template: tmpl,
+    default_date: String(firstYear),
+  };
 }
-
-// Threshold: collections with more item links than this use the fast path
-// (parse years from link hrefs, fetch only 1 sample item).
-const LARGE_COLLECTION_THRESHOLD = 30;
 
 // --- descriptor builder ---
 
@@ -161,7 +256,7 @@ function isGlobalBbox(bbox) {
   return (maxx - minx) > 350 || (maxy - miny) > 170;
 }
 
-function buildDescriptor({ collection, items, collectionUrl, fastYears }) {
+function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
   const firstItem = items[0];
   const asset = firstItem?.assets?.data || null;
   const bands =
@@ -195,31 +290,27 @@ function buildDescriptor({ collection, items, collectionUrl, fastYears }) {
     thumbnail: collection.assets?.thumbnail?.href || null,
   };
 
-  // Fast-path time-series: years were parsed from link hrefs, only 1 sample
-  // item was fetched. Build the URL template from that sample.
-  if (fastYears && fastYears.length > 1 && asset?.href) {
-    const sampleDt = firstItem?.properties?.datetime || firstItem?.properties?.start_datetime;
-    const sampleYear = sampleDt ? parseInt(sampleDt.slice(0, 4), 10) : fastYears[0];
-    const url_template = buildUrlTemplate(asset.href, sampleYear);
-    if (url_template) {
-      // For daily series the template bakes in a specific DOY from the sample
-      // item. Default to the sample's year so the initial tile request is
-      // guaranteed to resolve; other years may produce 404s for that DOY.
+  // Time-series: try fast-path detection first (dates parsed from link
+  // hrefs), then legacy item-based for small collections fetched in full.
+  if (fastDates && fastDates.dates.length > 1 && asset?.href) {
+    const tmpl = buildTimeseriesTemplate(asset.href, fastDates.sampleParsed);
+    if (tmpl) {
       desc.kind = "timeseries";
-      desc.url_template = url_template;
-      desc.years = fastYears;
-      desc.default_year = sampleYear;
+      desc.timeseries = {
+        granularity: fastDates.granularity,
+        dates: fastDates.dates,
+        url_template: tmpl,
+        default_date: fastDates.sampleParsed.dateStr,
+      };
     } else {
       desc.kind = "singleband";
-      desc.cog_url = asset.href;
+      desc.cog_url = asset?.href;
     }
   } else if (items.length > 1) {
-    const { url_template, years } = buildTimeseries(items);
-    if (url_template && years.length > 1) {
+    const ts = buildTimeseriesFromItems(items);
+    if (ts) {
       desc.kind = "timeseries";
-      desc.url_template = url_template;
-      desc.years = years;
-      desc.default_year = years[years.length - 1];
+      desc.timeseries = ts;
     } else {
       desc.kind = "singleband";
       desc.cog_url = asset?.href;
@@ -270,15 +361,14 @@ export async function walkCatalog(rootUrl, onProgress) {
       const iUrls = iLinks.map((l) => resolveUrl(curl, l.href));
 
       if (iUrls.length > LARGE_COLLECTION_THRESHOLD) {
-        // Fast path: parse years from link hrefs, fetch only 1 sample item.
-        // Saves thousands of fetches for daily time-series collections.
-        const fastYears = parseYearsFromLinks(iLinks);
+        // Fast path: parse full dates from link hrefs, fetch only 1 sample.
+        const fastDates = detectDatesFromLinks(iLinks);
         const sampleItem = await fetchJson(iUrls[0]);
         if (sampleItem?._error) throw new Error(sampleItem._error);
         console.debug(
-          `[fast-path] ${collection.id}: ${iUrls.length} items → 1 fetch, ${fastYears.length} years`,
+          `[fast-path] ${collection.id}: ${iUrls.length} items → 1 fetch, ${fastDates?.granularity ?? "?"} (${fastDates?.dates?.length ?? 0} dates)`,
         );
-        return { collection, items: [sampleItem], fastYears, collectionUrl: curl };
+        return { collection, items: [sampleItem], fastDates, collectionUrl: curl };
       }
 
       // Standard path: fetch all items (small collections).
@@ -304,7 +394,7 @@ export async function walkCatalog(rootUrl, onProgress) {
         collection: entry.collection,
         items: entry.items,
         collectionUrl: entry.collectionUrl,
-        fastYears: entry.fastYears || null,
+        fastDates: entry.fastDates || null,
       }));
     } catch (e) { console.warn("descriptor build error:", entry.collection?.id, e); }
   }
@@ -452,4 +542,4 @@ export function stacBrowserLink(stacUrl) {
 }
 
 // Expose helpers mostly for testing / debugging in devtools.
-export const _internals = { buildDescriptor, buildTimeseries, computeFacets, bucketGsd, bucketBands };
+export const _internals = { buildDescriptor, detectDatesFromLinks, buildTimeseriesTemplate, computeFacets, bucketGsd, bucketBands };
