@@ -2182,23 +2182,42 @@
       }
 
       // ---------- floating map legend ----------
+      const BAND_COLORS = { 1: "#e15759", 2: "#59a14f", 3: "#4e79a7", 4: "#af7aa1" };
+
       function renderMapLegend() {
         const root = document.getElementById("mapLegend");
         const entries = state.active.filter((lyr) => {
           if (!lyr.visible) return false;
-          const item = catalogItem(lyr.catalogId);
-          if (item.kind === "rgb") return false;
-          if (item.kind === "multiband" && lyr.mode === "rgb") return false;
-          return true; // singleband / timeseries / multiband-single
+          return true;
         });
         if (entries.length === 0) { root.className = "empty"; root.innerHTML = ""; return; }
         root.className = "";
         root.innerHTML = entries.map((lyr) => {
           const item = catalogItem(lyr.catalogId);
+          const isRgb = item.kind === "rgb" || (item.kind === "multiband" && lyr.mode === "rgb");
+          const dateBit = lyr.date != null ? ` · ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "";
+
+          if (isRgb) {
+            const bidx = lyr.bidx || item.bidx || [1, 2, 3];
+            const bandNames = item.bands
+              ? bidx.map((i) => item.bands.find((b) => b.idx === i)?.name || `Band ${i}`)
+              : ["R", "G", "B"];
+            const colors = bidx.map((i) => BAND_COLORS[i] || "#888");
+            const barGrad = `linear-gradient(to right, ${colors.join(",")})`;
+            const labelHtml = bandNames.map((n, i) =>
+              `<span style="color:${colors[i]}">${n}</span>`
+            ).join(" · ");
+            return `<div class="legend-entry">
+              <div class="lt">${item.title}</div>
+              <div class="lmeta">RGB${dateBit}</div>
+              <div class="bar" style="background:${barGrad}"></div>
+              <div class="labels" style="justify-content:center;">${labelHtml}</div>
+            </div>`;
+          }
+
           const [mn, mx] = lyr.rescale.split(",");
           const stops = COLORMAPS[lyr.colormap] || COLORMAPS.viridis;
           const gradient = `linear-gradient(to right, ${stops.join(",")})`;
-          const dateBit = lyr.date != null ? ` · ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "";
           return `<div class="legend-entry">
             <div class="lt">${item.title}</div>
             <div class="lmeta">${lyr.colormap}${dateBit}${item.units ? ` · ${formatUnits(item.units)}` : ""}</div>
