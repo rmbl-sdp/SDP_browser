@@ -53,7 +53,21 @@ Issues discovered in the RMBL SDP STAC catalog (`s3://rmbl-sdp/stac/v1/catalog.j
 
 **Upstream fix:** Either (a) populate `raster:bands[0].scale` and `raster:bands[0].offset` in the STAC metadata so the browser can convert between raw and physical units, or (b) store the COG data in physical units directly (preferred for interoperability — most tools expect un-scaled values).
 
-### 5. Daily time-series URL template limitations
+### 5. Missing CRS on daily temperature COGs
+
+**Affected items:** Daily time-series COGs (e.g. `bayes_tmax_year_2001_day_0305_est.tif` and likely all files in `UG_airtemp_2m_tmax_daily_81m_v1/`).
+
+**Problem:** The GeoTIFF files have no CRS embedded in their metadata. TiTiler/rasterio throws `CRSError: CRS is invalid: None` when attempting to reproject to Web Mercator for tile rendering. All requests (tiles, info, statistics) fail with HTTP 500.
+
+**Browser workaround:** None possible — CRS is required for reprojection. These layers show in the catalog but produce empty tiles when added.
+
+**Upstream fix:** Re-embed the CRS on the affected COGs. All SDP data uses EPSG:32613:
+```bash
+gdal_edit.py -a_srs EPSG:32613 bayes_tmax_year_*.tif
+```
+Or rebuild with the CRS set during COG generation. After fixing, the existing browser code (time-series detection, calendar picker, nodata handling) should work end-to-end.
+
+### 6. Daily time-series URL template limitations
 
 **Affected items:** All daily (and potentially monthly) time-series collections.
 
