@@ -23,8 +23,10 @@ resource "aws_cloudfront_distribution" "this" {
     viewer_protocol_policy = "redirect-to-https"
 
     # Full query-string cache key: url, rescale, colormap, bidx, etc. all matter.
+    # Forward the Origin header so TiTiler's CORS middleware can respond.
     forwarded_values {
       query_string = true
+      headers      = ["Origin"]
       cookies {
         forward = "none"
       }
