@@ -9,3 +9,9 @@ variable "aws_region" {
   type        = string
   default     = "us-east-2"
 }
+
+variable "aws_profile" {
+  description = "AWS CLI profile to use."
+  type        = string
+  default     = "sdp-browser-admin"
+}

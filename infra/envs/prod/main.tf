@@ -10,7 +10,8 @@ terraform {
 }
 
 provider "aws" {
-  region = var.aws_region
+  region  = var.aws_region
+  profile = var.aws_profile
   default_tags {
     tags = {
       Project     = "sdp-browser"
@@ -20,10 +21,12 @@ provider "aws" {
   }
 }
 
-# CloudFront-scoped resources (WAF web ACL, ACM certs) must live in us-east-1.
+# WAF web ACLs for CloudFront scope must live in us-east-1.
+# All compute (ECS, ALB, ECR, S3) stays in us-east-2 for same-region S3 access.
 provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
+  alias   = "us_east_1"
+  region  = "us-east-1"
+  profile = var.aws_profile
   default_tags {
     tags = {
       Project     = "sdp-browser"

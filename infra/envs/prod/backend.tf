@@ -7,5 +7,6 @@ terraform {
     region         = "us-east-2"
     dynamodb_table = "sdp-browser-tf-locks"
     encrypt        = true
+    profile        = "sdp-browser-admin"
   }
 }

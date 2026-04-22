@@ -3,6 +3,12 @@ variable "aws_region" {
   default = "us-east-2"
 }
 
+variable "aws_profile" {
+  description = "AWS CLI profile to use."
+  type        = string
+  default     = "sdp-browser-admin"
+}
+
 variable "name_prefix" {
   description = "Base prefix for all resources in this env."
   type        = string
