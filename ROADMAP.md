@@ -28,17 +28,19 @@ Living document tracking what's shipped, what's next, and what's on the horizon.
 
 ## Near-term (next up)
 
-### First live deploy
-- Choose AWS account + region (us-east-2 recommended for S3 co-location).
-- Run `infra/bootstrap/` to create state bucket + lock table.
-- First `terraform apply` for staging (ECR → image push → full apply).
-- Wire GitHub OIDC: set `AWS_DEPLOY_ROLE_ARN` in the staging environment.
-- Verify end-to-end: `git push origin main` → CI → staging deploy → public `*.cloudfront.net` URL.
-- See [`infra/README.md`](./infra/README.md) for step-by-step.
+### ~~First live deploy~~ ✅ Done
+- AWS account `254459631110`, region `us-east-2`.
+- Bootstrap (state bucket + lock table), staging Terraform apply, ECR image push (linux/amd64), OIDC deploy role wired to GitHub `staging` environment.
+- Live at <https://sdpbrowser.org>.
 
-### Domain + TLS
-- Pick subdomain (e.g. `sdp-browser.rmbl.org`, `api.sdp-browser.rmbl.org`).
-- Provision ACM cert in us-east-1, add to `terraform.tfvars`, apply, wire Route53.
+### ~~Domain + TLS~~ ✅ Done
+- `sdpbrowser.org` (site) + `api.sdpbrowser.org` (tile API).
+- Wildcard ACM cert in us-east-1, Route53 alias records.
+
+### Prod deploy
+- Apply `infra/envs/prod`, push image, set `AWS_DEPLOY_ROLE_ARN` on GitHub `prod` environment.
+- Point `sdpbrowser.org` at prod, move staging to `staging.sdpbrowser.org`.
+- Sized for workshop load: 2 vCPU / 4 GB baseline, autoscale to 6.
 
 ### COG audit (SPEC Phase 0)
 - Build `tools/cog-audit/` CLI that runs `rio cogeo validate` + `gdalinfo -json` across the full S3 catalog.

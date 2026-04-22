@@ -140,16 +140,57 @@ This AWS account already has a GitHub OIDC provider (created by the CHESS Hub). 
 
 ## DNS + TLS
 
-Both envs start with `domain_name = ""` → CloudFront uses its default `*.cloudfront.net` hostname, no ACM cert needed. When RMBL picks a domain:
+**Current state:** staging is live on `sdpbrowser.org` + `api.sdpbrowser.org` with a wildcard ACM cert.
 
-1. Provision an ACM certificate **in us-east-1** (CloudFront-scoped) covering the site and api subdomains. Route53 DNS-validation is easiest.
-2. Set the relevant `terraform.tfvars`:
-   ```hcl
-   domain_name         = "staging.sdp-browser.rmbl.org"
-   api_domain_name     = "api-staging.sdp-browser.rmbl.org"
-   acm_certificate_arn = "arn:aws:acm:us-east-1:<acct>:certificate/<id>"
+### How it was set up (reference for prod or a domain change)
+
+1. **Request a wildcard ACM certificate in us-east-1:**
+   ```bash
+   aws acm request-certificate \
+     --domain-name sdpbrowser.org \
+     --subject-alternative-names "*.sdpbrowser.org" \
+     --validation-method DNS \
+     --region us-east-1 \
+     --profile sdp-browser-admin
    ```
-3. `terraform apply`, then add Route53 A/AAAA alias records pointing at the two CloudFront distributions.
+
+2. **DNS-validate:** open the ACM console in us-east-1, find the cert, click "Create records in Route 53." Wait 2–5 minutes for status to change to `ISSUED`.
+
+3. **Update `terraform.tfvars`** with the domain names + cert ARN:
+   ```hcl
+   domain_name         = "sdpbrowser.org"
+   api_domain_name     = "api.sdpbrowser.org"
+   acm_certificate_arn = "arn:aws:acm:us-east-1:254459631110:certificate/861f60a7-5344-4157-86d1-ed66a19e0fdc"
+   ```
+
+4. **Apply:** `terraform apply` — updates both CloudFront distributions with the custom domains + TLS.
+
+5. **Route53 alias records** (A + AAAA for both domains):
+   ```bash
+   ZONE_ID="Z0562050N5GX14WNBGVF"  # sdpbrowser.org hosted zone
+   SITE_CF="d2t01u3u0l0v6n.cloudfront.net"
+   API_CF="d2mezrvzskyqgf.cloudfront.net"
+   CF_ZONE="Z2FDTNDATAQYW2"  # CloudFront's fixed hosted zone ID
+
+   aws route53 change-resource-record-sets --hosted-zone-id $ZONE_ID \
+     --profile sdp-browser-admin --change-batch '{
+     "Changes": [
+       {"Action":"UPSERT","ResourceRecordSet":{"Name":"sdpbrowser.org","Type":"A","AliasTarget":{"HostedZoneId":"'$CF_ZONE'","DNSName":"'$SITE_CF'","EvaluateTargetHealth":false}}},
+       {"Action":"UPSERT","ResourceRecordSet":{"Name":"sdpbrowser.org","Type":"AAAA","AliasTarget":{"HostedZoneId":"'$CF_ZONE'","DNSName":"'$SITE_CF'","EvaluateTargetHealth":false}}},
+       {"Action":"UPSERT","ResourceRecordSet":{"Name":"api.sdpbrowser.org","Type":"A","AliasTarget":{"HostedZoneId":"'$CF_ZONE'","DNSName":"'$API_CF'","EvaluateTargetHealth":false}}},
+       {"Action":"UPSERT","ResourceRecordSet":{"Name":"api.sdpbrowser.org","Type":"AAAA","AliasTarget":{"HostedZoneId":"'$CF_ZONE'","DNSName":"'$API_CF'","EvaluateTargetHealth":false}}}
+     ]}'
+   ```
+
+6. **Update `config.js`** (or the deploy workflow) to use `https://api.sdpbrowser.org` as the TITILER URL, re-sync to S3, and invalidate CloudFront.
+
+### Prod domain (when ready)
+
+When the prod stack is deployed, either:
+- Point `sdpbrowser.org` at prod and move staging to `staging.sdpbrowser.org`, or
+- Keep the current layout and give prod a separate domain.
+
+The same wildcard cert covers both options.
 
 ## Expected costs (ballpark)
 

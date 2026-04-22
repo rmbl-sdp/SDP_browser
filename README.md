@@ -2,7 +2,7 @@
 
 Web interface for discovering, exploring, and extracting data from the **RMBL Spatial Data Platform** — a curated STAC catalog of Cloud-Optimized GeoTIFFs for western Colorado research sites. Pairs with the [rSDP](https://rmbl-sdp.github.io/rSDP/) R package: anything the app can preview or download, it can also hand you as copy-pasteable rSDP code.
 
-**Staging**: <https://d2t01u3u0l0v6n.cloudfront.net>
+**Live**: <https://sdpbrowser.org> · Tile API: <https://api.sdpbrowser.org>
 
 Architecture and deployment strategy live in [`SPEC.md`](./SPEC.md); the short version is a persistent TiTiler on ECS Fargate behind ALB + CloudFront + WAF, a static React-free SPA on S3 + CloudFront, and a client-side walk of the existing static STAC catalog. Lessons and the "don't use Lambda for COG tile servers" decision were carried over from [`bloom_forecast_vis`](https://github.com/rmbl-sdp) and are written up in `SPEC.md §2a`.
 
