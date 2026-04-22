@@ -438,6 +438,17 @@
         font-variant-numeric: tabular-nums;
       }
 
+      .legend-blocks {
+        display: flex; flex-wrap: wrap; gap: 2px;
+      }
+      .legend-block {
+        width: 18px; height: 14px;
+        border-radius: var(--r-sm);
+        font-size: 8px; line-height: 14px;
+        text-align: center; color: rgba(0,0,0,0.6);
+        font-weight: 600;
+      }
+
       /* Map overlay control: labels / roads toggle */
       #mapCtls {
         position: absolute; top: 10px; left: 10px;
@@ -846,6 +857,9 @@
         "viridis","magma","inferno","cividis","terrain",
         "rdbu","rdbu_r","spectral","greys","ylgnbu",
       ];
+      const CATEGORICAL_CMAPS = [
+        "tab10","tab20","set1","set2","set3","paired","accent","dark2","pastel1",
+      ];
 
       const state = {
         catalog: null, // CatalogRepo { all, get, search, facets, fromCache, fallback }
@@ -923,6 +937,15 @@
         spectral:["#9e0142","#d53e4f","#f46d43","#fdae61","#fee08b","#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd","#5e4fa2"],
         greys:   ["#ffffff","#d9d9d9","#bdbdbd","#969696","#737373","#525252","#252525","#000000"],
         ylgnbu:  ["#ffffd9","#edf8b1","#c7e9b4","#7fcdbb","#41b6c4","#1d91c0","#225ea8","#253494","#081d58"],
+        tab10:   ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"],
+        tab20:   ["#1f77b4","#aec7e8","#ff7f0e","#ffbb78","#2ca02c","#98df8a","#d62728","#ff9896","#9467bd","#c5b0d5","#8c564b","#c49c94","#e377c2","#f7b6d2","#7f7f7f","#c7c7c7","#bcbd22","#dbdb8d","#17becf","#9edae5"],
+        set1:    ["#e41a1c","#377eb8","#4daf4a","#984ea3","#ff7f00","#ffff33","#a65628","#f781bf","#999999"],
+        set2:    ["#66c2a5","#fc8d62","#8da0cb","#e78ac3","#a6d854","#ffd92f","#e5c494","#b3b3b3"],
+        set3:    ["#8dd3c7","#ffffb3","#bebada","#fb8072","#80b1d3","#fdb462","#b3de69","#fccde5","#d9d9d9","#bc80bd","#ccebc5","#ffed6f"],
+        paired:  ["#a6cee3","#1f78b4","#b2df8a","#33a02c","#fb9a99","#e31a1c","#fdbf6f","#ff7f00","#cab2d6","#6a3d9a","#ffff99","#b15928"],
+        accent:  ["#7fc97f","#beaed4","#fdc086","#ffff99","#386cb0","#f0027f","#bf5b17","#666666"],
+        dark2:   ["#1b9e77","#d95f02","#7570b3","#e7298a","#66a61e","#e6ab02","#a6761d","#666666"],
+        pastel1: ["#fbb4ae","#b3cde3","#ccebc5","#decbe4","#fed9a6","#ffffcc","#e5d8bd","#fddaec","#f2f2f2"],
       };
       function hexToRGB(h) {
         const n = parseInt(h.slice(1), 16);
@@ -1415,6 +1438,8 @@
         if (!item) return;
         // RGB multiband composite is always 0–255 (uint8); skip.
         if (item.kind === "multiband" && lyr.mode === "rgb") return;
+        // Categorical layers still benefit from auto-rescale to find the
+        // actual class range (e.g. 0-6 instead of 0-255 for uint8).
 
         const cacheKey = item.id;
         if (!force && autoRescaleCache.has(cacheKey)) {
@@ -2094,7 +2119,7 @@
                 <span>${lyr.colormap}</span><span class="chev">▾</span>
               </div>
               <div class="cmap-picker-menu">
-                ${SINGLEBAND_CMAPS.map((c) =>
+                ${(item.categorical ? CATEGORICAL_CMAPS : SINGLEBAND_CMAPS).map((c) =>
                   `<div class="cmap-picker-option ${c === lyr.colormap ? "selected" : ""}" data-cmap="${c}" style="background:${cmapGradient(c)};">${c}</div>`
                 ).join("")}
               </div>
@@ -2279,6 +2304,23 @@
           const [mn, mx] = lyr.rescale.split(",");
           const stops = COLORMAPS[lyr.colormap] || COLORMAPS.viridis;
           const gradient = `linear-gradient(to right, ${stops.join(",")})`;
+
+          if (item.categorical) {
+            const nClasses = Math.round(+mx - +mn) + 1;
+            const classColors = Array.from({ length: Math.min(nClasses, 20) }, (_, i) => {
+              const t = nClasses <= 1 ? 0.5 : i / (nClasses - 1);
+              return sampleColormap(lyr.colormap, t);
+            });
+            const blocks = classColors.map((c, i) =>
+              `<span class="legend-block" style="background:${c};" title="Class ${+mn + i}">${+mn + i}</span>`
+            ).join("");
+            return `<div class="legend-entry">
+              <div class="lt">${item.title}</div>
+              <div class="lmeta">${lyr.colormap}${dateBit} · categorical</div>
+              <div class="legend-blocks">${blocks}</div>
+            </div>`;
+          }
+
           return `<div class="legend-entry">
             <div class="lt">${item.title}</div>
             <div class="lmeta">${lyr.colormap}${dateBit}${item.units ? ` · ${formatUnits(item.units)}` : ""}</div>

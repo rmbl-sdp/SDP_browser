@@ -45,6 +45,9 @@ function pickRescale(firstBand, desc, collection) {
     }
   }
   const dtype = firstBand?.data_type || "";
+  // Categorical uint8: narrow default so classes get distinct colors
+  // while waiting for auto-rescale to find the real range.
+  if (dtype === "uint8" && firstBand?.unit === "categorical") return { rescale: "0,10", source: "heuristic" };
   if (dtype === "uint8") return { rescale: "0,255", source: "heuristic" };
   if (dtype === "uint16") return { rescale: "0,10000", source: "heuristic" };
   const t = (desc.title + " " + (desc.description || "")).toLowerCase();
@@ -284,6 +287,7 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
     units: bands[0]?.unit || null,
     scale: (typeof bands[0]?.scale === "number" && bands[0].scale !== 0) ? bands[0].scale : null,
     offset: typeof bands[0]?.offset === "number" ? bands[0].offset : null,
+    categorical: bands[0]?.unit === "categorical",
     bandCount,
     dtype,
     stacItemUrl: firstItem?.links?.find((l) => l.rel === "self")?.href
@@ -330,7 +334,7 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
     desc.kind = "unsupported";
   }
 
-  desc.default_colormap = pickColormap(desc.type, desc.kind);
+  desc.default_colormap = desc.categorical ? "tab20" : pickColormap(desc.type, desc.kind);
   const rs = pickRescale(bands[0], desc, collection);
   desc.default_rescale = rs.rescale;
   desc.rescale_source = rs.source;
