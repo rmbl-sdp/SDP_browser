@@ -21,51 +21,122 @@ infra/
 
 ## Status
 
-**Scaffold only.** Everything here `terraform validate`s without AWS credentials; nothing has been `apply`-ed. The sections below document what needs to happen when it's time to deploy.
+**Staging is live.** Deployed to AWS account `254459631110` in `us-east-2`.
 
-Local checks that CI also runs:
+| Resource | Value |
+|---|---|
+| Site | `https://d2t01u3u0l0v6n.cloudfront.net` |
+| Tile API | `https://d2mezrvzskyqgf.cloudfront.net` |
+| ECR | `254459631110.dkr.ecr.us-east-2.amazonaws.com/sdp-browser-staging-titiler` |
+| ECS cluster | `sdp-browser-staging-cluster` |
+| ECS service | `sdp-browser-staging-svc` |
+| Site S3 bucket | `sdp-browser-staging-site` |
+| Deploy role | `arn:aws:iam::254459631110:role/sdp-browser-staging-github-deploy` |
+| State bucket | `sdp-browser-tf-state` |
+| Lock table | `sdp-browser-tf-locks` |
 
-```bash
-terraform fmt -check -recursive infra/
-terraform -chdir=infra/bootstrap      init -backend=false && terraform -chdir=infra/bootstrap      validate
-terraform -chdir=infra/envs/staging   init -backend=false && terraform -chdir=infra/envs/staging   validate
-terraform -chdir=infra/envs/prod      init -backend=false && terraform -chdir=infra/envs/prod      validate
-```
+Prod is scaffolded but not applied.
+
+## Prerequisites
+
+- **AWS CLI profile** `sdp-browser-admin` configured with IAM user credentials for account `254459631110`:
+  ```bash
+  aws configure --profile sdp-browser-admin
+  # Region: us-east-2, Output: json
+  aws sts get-caller-identity --profile sdp-browser-admin
+  ```
+- **Terraform >= 1.5** installed.
+- **Docker** with `buildx` for cross-platform builds (Mac ARM → Linux amd64).
 
 ## One-time bootstrap
 
-Run once per AWS account to create the Terraform state bucket + lock table. Use an IAM user with admin credentials or an AWS SSO session — this module runs with **local state**.
+Run once per AWS account to create the Terraform state bucket + lock table. Uses **local state**.
 
 ```bash
 cd infra/bootstrap
 terraform init
-terraform apply -var aws_region=us-east-2
+terraform apply
 terraform output
 # state_bucket = "sdp-browser-tf-state"
 # lock_table   = "sdp-browser-tf-locks"
 ```
 
-Both env backends (`envs/staging/backend.tf`, `envs/prod/backend.tf`) are already pointing at these default names.
+Both env backends already point at these names. The `aws_profile` defaults to `sdp-browser-admin`.
 
 ## First-time env bring-up
 
-There's a chicken-and-egg with ECR: the ECS task definition wants an image tag, but the ECR repo doesn't exist yet. The deploy workflow handles this automatically with a `-target=module.ecr_titiler` apply first, then a push, then the full apply. To do it manually:
+There's a chicken-and-egg with ECR: the ECS task definition wants an image tag, but the ECR repo doesn't exist yet.
 
 ```bash
 cd infra/envs/staging
 terraform init
 terraform apply -target=module.ecr_titiler         # creates the ECR repo
-# --- push an image tagged `bootstrap` into the repo manually ---
-terraform apply -var container_image_tag=bootstrap  # full stack
 ```
+
+Then build and push the TiTiler image. **Important: Fargate runs linux/amd64.** If you're on Apple Silicon, you must cross-compile:
+
+```bash
+# Authenticate Docker to ECR
+aws ecr get-login-password --region us-east-2 --profile sdp-browser-admin \
+  | docker login --username AWS --password-stdin 254459631110.dkr.ecr.us-east-2.amazonaws.com
+
+# Build for amd64 (required even on ARM Macs) and push
+ECR_URL="$(terraform output -raw ecr_repository_url)"
+docker buildx build --platform linux/amd64 -t $ECR_URL:bootstrap --push ../../services/titiler
+```
+
+Then apply the full stack:
+
+```bash
+terraform apply                                    # full stack
+```
+
+This creates: VPC, NAT, ALB (locked to CloudFront prefix list), ECS Fargate service, CloudFront distributions (API + site), WAF, S3 site bucket, OIDC deploy role.
+
+### Deploy the static site
+
+Generate `config.js` from Terraform outputs and sync to S3:
+
+```bash
+API_DOMAIN="$(terraform output -raw api_distribution_domain)"
+SITE_BUCKET="$(terraform output -raw site_bucket_name)"
+SITE_DIST="$(terraform output -raw site_distribution_id)"
+API_DIST="$(terraform output -raw api_distribution_id)"
+
+cat > ../../app/web/config.js <<EOF
+window.__SDP_CONFIG__ = {
+  TITILER: "https://$API_DOMAIN",
+  STAC_ROOT: "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json",
+  SITES_QUERY_URL: "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026_Public_View/FeatureServer/14/query",
+};
+EOF
+
+aws s3 sync ../../app/web "s3://$SITE_BUCKET" --delete \
+  --exclude "config.example.js" --profile sdp-browser-admin
+
+aws cloudfront create-invalidation --distribution-id $SITE_DIST --paths "/*" --profile sdp-browser-admin
+aws cloudfront create-invalidation --distribution-id $API_DIST --paths "/*" --profile sdp-browser-admin
+```
+
+## GitHub Actions OIDC
 
 OIDC trust is scoped to `rmbl-sdp/SDP_browser`:
 - Staging accepts `ref:refs/heads/main` (triggers `deploy-staging.yml`).
 - Prod accepts `ref:refs/tags/v*` (triggers `deploy-prod.yml`).
 
-The deploy role ARN is a Terraform output (`github_deploy_role_arn`). Paste it as a **non-secret variable** named `AWS_DEPLOY_ROLE_ARN` on each of the `staging` / `prod` GitHub environments. Protect the `prod` environment with a required-reviewer rule so tags can't accidentally ship.
+### Setup
 
-A side-note on the OIDC provider itself: the first `apply` in a given AWS account creates the `aws_iam_openid_connect_provider`; subsequent stacks (the `prod` env) set `create_oidc_provider = false` and look it up instead. If you deploy `prod` into a *separate* AWS account, flip that flag back to `true` in `envs/prod/main.tf`.
+1. Go to <https://github.com/rmbl-sdp/SDP_browser/settings/environments>.
+2. Create environment **`staging`**:
+   - Add variable `AWS_DEPLOY_ROLE_ARN` = `arn:aws:iam::254459631110:role/sdp-browser-staging-github-deploy`
+   - No protection rules needed.
+3. Create environment **`prod`** (when ready):
+   - Add variable `AWS_DEPLOY_ROLE_ARN` = `<terraform output from prod apply>`
+   - Enable **Required reviewers** protection rule.
+
+### Note on OIDC provider
+
+This AWS account already has a GitHub OIDC provider (created by the CHESS Hub). Both staging and prod set `create_oidc_provider = false` to reuse it. If deploying to a **different** AWS account, flip that to `true` in the env's `main.tf`.
 
 ## DNS + TLS
 
@@ -78,7 +149,7 @@ Both envs start with `domain_name = ""` → CloudFront uses its default `*.cloud
    api_domain_name     = "api-staging.sdp-browser.rmbl.org"
    acm_certificate_arn = "arn:aws:acm:us-east-1:<acct>:certificate/<id>"
    ```
-3. `terraform apply`, then add Route53 A/AAAA alias records pointing at the two CloudFront distributions (their domain names are in the Terraform outputs).
+3. `terraform apply`, then add Route53 A/AAAA alias records pointing at the two CloudFront distributions.
 
 ## Expected costs (ballpark)
 
@@ -88,12 +159,14 @@ From `SPEC.md §2a`:
 - Workshop / sustained traffic: ~$700–1 600 / month.
 - S3 + CloudFront egress dominates at scale; the S3 gateway VPC endpoint is non-negotiable (saves ~$0.045/GB on every tile fetch).
 
-## Gotchas
+## Gotchas discovered during first deploy
 
-- **WAF scope is `CLOUDFRONT`** which means the web ACL must live in **us-east-1** regardless of where the rest of the stack runs. The `us_east_1` provider alias in each env handles that.
-- **The `iam-github-oidc` module** creates a `aws_iam_openid_connect_provider` with `create_oidc_provider = true` (staging default) and reuses the existing provider with `create_oidc_provider = false` (prod default). Without that flag, a second `apply` in the same account fails.
-- **`aws_ecs_service.this` has `ignore_changes = [task_definition, desired_count]`.** Terraform sets the initial task def, then GitHub Actions takes over: each deploy builds a new image and `ecs update-service --force-new-deployment`. Don't re-`apply` just to "sync" — it won't do what you expect.
-- **State lock contention:** two concurrent applies against the same env will block on the DynamoDB lock. Pipelines should be serial.
+- **OIDC provider already exists**: if the AWS account already has a GitHub OIDC provider, Terraform fails with `EntityAlreadyExists`. Fix: set `create_oidc_provider = false` on the `github_oidc` module.
+- **Docker image architecture**: Fargate runs `linux/amd64`. Building on Apple Silicon produces ARM images by default → `CannotPullContainerError: image Manifest does not contain descriptor matching platform 'linux/amd64'`. Fix: always use `docker buildx build --platform linux/amd64`.
+- **CloudFront CORS**: the site and API are on different CloudFront domains. TiTiler's CORS middleware needs the `Origin` header, but CloudFront strips it by default. Fix: `forwarded_values.headers = ["Origin"]` in the cloudfront-api module (already applied).
+- **WAF scope is `CLOUDFRONT`**: the web ACL must live in **us-east-1** regardless of where the rest of the stack runs. The `us_east_1` provider alias in each env handles that.
+- **`aws_ecs_service.this` has `ignore_changes = [task_definition, desired_count]`**: Terraform sets the initial task def; GitHub Actions takes over via `ecs update-service --force-new-deployment`.
+- **State lock contention**: two concurrent applies against the same env will block on the DynamoDB lock.
 
 ## Useful outputs
 
@@ -107,7 +180,7 @@ Per env (`terraform output`):
 
 ## What talks to what
 
-- **`../.github/workflows/deploy-*.yml`** consumes these outputs directly via `terraform output -raw` and drives the actual build + push + sync + invalidate steps. Terraform owns infrastructure shape; GitHub Actions owns the per-release image tag and the `config.js` content. The split keeps state-drift under Terraform's nose and release cadence under git's.
+- **`../.github/workflows/deploy-*.yml`** consumes these outputs directly via `terraform output -raw` and drives the actual build + push + sync + invalidate steps. Terraform owns infrastructure shape; GitHub Actions owns the per-release image tag and the `config.js` content.
 - **`../services/titiler/Dockerfile`** is the ECS task image. Environment variables are wired in `envs/*/main.tf` via `module "ecs_titiler" { environment = [...] }`.
 - **`../app/web/`** is the bundle synced to the `site_bucket_name` S3 bucket, with a generated `config.js` pointing at `api_distribution_domain`.
-- **`../prototype/`** does not touch this infra at all — it's a local Docker Compose stack and a non-goal for deployment.
+- **`../prototype/`** does not touch this infra at all — it's a local Docker Compose stack.
