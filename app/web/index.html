@@ -3195,6 +3195,21 @@ message("Saved to ${outName}")
             ensureAoiOnTop();
           }
 
+          // If no layers were restored from the hash, add the landcover
+          // basemap (BM013) as a default layer at 50% opacity.
+          if (!saved.layers.length) {
+            const defaultId = "ug-landcover-basemap";
+            const defaultItem = catalogItem(defaultId);
+            if (defaultItem) {
+              addActive(defaultId);
+              const defaultLyr = state.active.find((l) => l.catalogId === defaultId);
+              if (defaultLyr) {
+                defaultLyr.opacity = 0.5;
+                state.expandedUid = null;
+              }
+            }
+          }
+
           // View takes precedence over fitBounds: if the user has a saved
           // pan/zoom, respect it. Otherwise zoom to the first restored layer.
           if (saved.view) {
