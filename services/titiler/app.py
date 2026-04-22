@@ -57,6 +57,16 @@ class SDPReader(BaseReader):
             self.bounds = self.dataset.bounds
 
 
+# Restrict which S3 URLs TiTiler will serve. Without this, the tile API
+# is an open proxy for arbitrary public rasters, consuming our compute.
+ALLOWED_URL_PREFIXES = [
+    p.strip() for p in os.environ.get(
+        "ALLOWED_URL_PREFIXES",
+        "https://rmbl-sdp.s3.us-east-2.amazonaws.com/,"
+        "https://rmbl-sdp.s3.amazonaws.com/"
+    ).split(",") if p.strip()
+]
+
 app = FastAPI(title="SDP Browser TiTiler", version="0.1.0")
 
 _cors_raw = os.environ.get("CORS_ORIGINS", "*").strip()
@@ -67,12 +77,23 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Accept", "Origin"],
 )
 
 cog = TilerFactory(reader=SDPReader)
 app.include_router(cog.router, prefix="/cog", tags=["COG"])
 add_exception_handlers(app, DEFAULT_STATUS_CODES)
+
+
+@app.middleware("http")
+async def validate_url_param(request, call_next):
+    """Block requests whose `url` query parameter points outside the allowed S3 prefixes."""
+    url_param = request.query_params.get("url", "")
+    if url_param and ALLOWED_URL_PREFIXES:
+        if not any(url_param.startswith(p) for p in ALLOWED_URL_PREFIXES):
+            from starlette.responses import JSONResponse
+            return JSONResponse({"detail": "URL not in allowed prefix list"}, status_code=403)
+    return await call_next(request)
 
 
 @app.get("/health")

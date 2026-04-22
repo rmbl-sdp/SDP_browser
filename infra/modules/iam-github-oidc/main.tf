@@ -103,9 +103,8 @@ locals {
       Action = [
         "cloudfront:CreateInvalidation",
         "cloudfront:GetDistribution",
-        "cloudfront:ListDistributions",
       ]
-      Resource = "*"
+      Resource = var.cloudfront_distribution_arns
     }] : [],
   )
 }

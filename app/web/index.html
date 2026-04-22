@@ -847,13 +847,12 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script src="./config.js"></script>
     <script type="module">
       import { loadRepo, makeInMemoryRepo, stacBrowserLink, invalidateCache, resolveTimeseriesUrl, formatDateLabel } from "./js/catalog-static.js";
 
-      const SDP_CONFIG = (typeof window !== "undefined" && window.__SDP_CONFIG__) || {};
-      const STAC_ROOT = SDP_CONFIG.STAC_ROOT || "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json";
-      const TITILER = SDP_CONFIG.TITILER || "http://localhost:8000";
+      const STAC_ROOT = "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json";
+
+      const TITILER = "http://localhost:8000";
       const SINGLEBAND_CMAPS = [
         "viridis","magma","inferno","cividis","terrain",
         "rdbu","rdbu_r","spectral","greys","ylgnbu",
@@ -980,6 +979,11 @@
       function targetLayer() { return state.active.find((l) => l.visible) || null; }
       const mapLayerId = (uid) => `cog-${uid}`;
       const mapSourceId = (uid) => `cog-${uid}`;
+
+      function esc(s) {
+        if (!s) return "";
+        return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+      }
 
       function formatUnits(u) {
         if (!u) return "";
@@ -1180,8 +1184,8 @@
       // -------- RMBL research sites (classic ArcGIS FeatureServer) --------
       // OGCFeatureServer still requires a token even after "public" sharing;
       // the classic FeatureServer respects item sharing and returns GeoJSON.
-      const SITES_QUERY_URL = SDP_CONFIG.SITES_QUERY_URL
-        || "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026_Public_View/FeatureServer/14/query";
+      const SITES_QUERY_URL =
+        "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026_Public_View/FeatureServer/14/query";
 
       async function fetchResearchSites() {
         const features = [];
@@ -1775,17 +1779,17 @@
         const activeIds = new Set(state.active.map((l) => l.catalogId));
         root.innerHTML = results.map((d) => {
           const pills = [];
-          if (d.domain) pills.push(`<span class="pill domain">${d.domain}</span>`);
-          if (d.release) pills.push(`<span class="pill release">${d.release}</span>`);
-          if (d.type) pills.push(`<span class="pill type">${d.type}</span>`);
+          if (d.domain) pills.push(`<span class="pill domain">${esc(d.domain)}</span>`);
+          if (d.release) pills.push(`<span class="pill release">${esc(d.release)}</span>`);
+          if (d.type) pills.push(`<span class="pill type">${esc(d.type)}</span>`);
           pills.push(`<span class="pill kind">${d.kind}</span>`);
           if (d.gsd != null) pills.push(`<span class="pill gsd">${d.gsd} m</span>`);
           const sel = d.id === state.discovery.detailId ? " selected" : "";
           const added = activeIds.has(d.id) ? " added" : "";
           const thumb = d.thumbnail ? ` has-thumb" style="background-image:url('${d.thumbnail}')` : ``;
-          return `<div class="dd-card${sel}${added}${thumb}" data-id="${d.id}">
-            <div class="t">${d.title}</div>
-            <div class="d clamp">${d.description || ""}</div>
+          return `<div class="dd-card${sel}${added}${thumb}" data-id="${esc(d.id)}">
+            <div class="t">${esc(d.title)}</div>
+            <div class="d clamp">${esc(d.description)}</div>
             <div class="dd-pills">${pills.join("")}</div>
           </div>`;
         }).join("");
@@ -1826,12 +1830,12 @@
           .join("");
         const canAdd = d.kind !== "unsupported";
         const thumbHtml = d.thumbnail
-          ? `<img class="dd-detail-thumb" src="${d.thumbnail}" alt="Thumbnail for ${d.title}" />`
+          ? `<img class="dd-detail-thumb" src="${d.thumbnail}" alt="Thumbnail for ${esc(d.title)}" />`
           : "";
         root.innerHTML = `
           ${thumbHtml}
-          <h3 class="title">${d.title}</h3>
-          <div class="desc">${d.description || ""}</div>
+          <h3 class="title">${esc(d.title)}</h3>
+          <div class="desc">${esc(d.description)}</div>
           <div class="meta">${metaHtml}</div>
           <div class="actions">
             <button class="add ${added ? "added" : ""}" ${added || !canAdd ? "disabled" : ""}>
@@ -1862,7 +1866,7 @@
             <div class="act-row">
               <span class="grip" title="drag to reorder">⋮⋮</span>
               <button data-act="vis" class="${lyr.visible ? "" : "vis-off"}" title="toggle visibility">${lyr.visible ? "👁" : "◌"}</button>
-              <span class="t" title="${item.title}">${item.title}</span>
+              <span class="t" title="${esc(item.title)}">${esc(item.title)}</span>
               <button data-act="rm" title="remove">✕</button>
               <button data-act="toggle" title="${isExpanded ? "collapse" : "expand"}">${isExpanded ? "▾" : "▸"}</button>
             </div>
@@ -2295,7 +2299,7 @@
               `<span style="color:${colors[i]}">${n}</span>`
             ).join(" · ");
             return `<div class="legend-entry">
-              <div class="lt">${item.title}</div>
+              <div class="lt">${esc(item.title)}</div>
               <div class="lmeta">RGB${dateBit}</div>
               <div class="bar" style="background:${barGrad}"></div>
               <div class="labels" style="justify-content:center;">${labelHtml}</div>
@@ -2316,14 +2320,14 @@
               `<span class="legend-block" style="background:${c};" title="Class ${+mn + i}">${+mn + i}</span>`
             ).join("");
             return `<div class="legend-entry">
-              <div class="lt">${item.title}</div>
+              <div class="lt">${esc(item.title)}</div>
               <div class="lmeta">${lyr.colormap}${dateBit} · categorical</div>
               <div class="legend-blocks">${blocks}</div>
             </div>`;
           }
 
           return `<div class="legend-entry">
-            <div class="lt">${item.title}</div>
+            <div class="lt">${esc(item.title)}</div>
             <div class="lmeta">${lyr.colormap}${dateBit}${item.units ? ` · ${formatUnits(item.units)}` : ""}</div>
             <div class="bar" style="background:${gradient}"></div>
             <div class="labels"><span>${mn}</span><span>${mx}</span></div>
@@ -2525,7 +2529,7 @@
         const areaKm2 = (maxx - minx) * kmPerDegLon * (maxy - miny) * kmPerDegLat;
         const dateBit = lyr.date != null ? ` · ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "";
         const baseInfo =
-          `${item.title}${dateBit} · ` +
+          `${esc(item.title)}${dateBit} · ` +
           `${areaKm2 < 1 ? (areaKm2 * 100).toFixed(1) + " ha" : areaKm2.toFixed(2) + " km²"}`;
         info.textContent = baseInfo;
         info.dataset.base = baseInfo;
@@ -2546,7 +2550,7 @@
 library(rSDP)
 library(terra)
 
-# ${item.title}
+# ${esc(item.title)}
 metadata <- sdp_get_metadata("${id}")
 dataset  <- ${rasterCall}
 
@@ -2578,7 +2582,7 @@ writeRaster(subset, "${outName}", overwrite = TRUE)
         return `# pip install pysdp
 import pysdp
 
-# ${item.title}
+# ${esc(item.title)}
 metadata = pysdp.get_metadata("${id}")
 dataset  = ${openCall}
 
@@ -2624,9 +2628,9 @@ subset.rio.to_raster("${outName}")
         const thumbLine = item.thumbnail ? `\n\n![Thumbnail](${item.thumbnail})` : "";
 
         const mdCell = [
-          `# ${item.title}\n`,
+          `# ${esc(item.title)}\n`,
           `\n`,
-          `${item.description || ""}\n`,
+          `${esc(item.description)}\n`,
           `\n`,
           `${metaTable}\n`,
           `${thumbLine}\n`,
@@ -2749,11 +2753,11 @@ subset.rio.to_raster("${outName}")
         const thumbLine = item.thumbnail ? `\n![Thumbnail](${item.thumbnail})\n` : "";
 
         const rmd = `---
-title: "${item.title}"
+title: "${esc(item.title)}"
 output: html_document
 ---
 
-${item.description || ""}
+${esc(item.description)}
 
 ${metaTable}
 ${thumbLine}
@@ -2789,7 +2793,7 @@ subset
 ## Quick-look Visualization
 
 \`\`\`{r plot, fig.width=10, fig.height=8}
-plot(subset, main = "${item.title}")
+plot(subset, main = "${esc(item.title)}")
 \`\`\`
 
 ## Export
@@ -2898,7 +2902,7 @@ message("Saved to ${outName}")
         const rgbBandColors = { b1: "#e15759", b2: "#59a14f", b3: "#4e79a7" };
         const header = document.createElement("div");
         header.style.cssText = "font-size:11px;color:var(--muted);margin-bottom:6px;";
-        header.textContent = `${item.title}` + (lyr.date != null ? `  ·  ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "");
+        header.textContent = `${esc(item.title)}` + (lyr.date != null ? `  ·  ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "");
         container.appendChild(header);
         bandKeys.forEach((bk) => {
           const s = stats[bk];
