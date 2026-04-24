@@ -3256,7 +3256,7 @@ message("Saved to ${outName}")
 
           // If no layers were restored from the hash, add the landcover
           // basemap (BM013) as a default layer at 50% opacity.
-          if (!saved.layers.length) {
+          if (!saved.layers.length && !saved.add.length) {
             const defaultId = "ug-landcover-basemap";
             const defaultItem = catalogItem(defaultId);
             if (defaultItem) {
