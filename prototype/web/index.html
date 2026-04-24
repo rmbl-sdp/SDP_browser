@@ -3060,7 +3060,20 @@ message("Saved to ${outName}")
         out.discover = kv.discover === "1";
         out.dq = kv.dq || "";
         out.df = kv.df || "";
+        // Deep-link: #add=<id>,<id>,... adds layers via addActive on load.
+        // Accepts collection slugs or rsdp_ids (e.g. R3D010).
+        out.add = kv.add ? kv.add.split(",").map((s) => s.trim()).filter(Boolean) : [];
         return out;
+      }
+
+      // Resolve a deep-link ID: try as collection slug first, then as rsdp_id.
+      function resolveDeepLinkId(idOrRsdp) {
+        if (!state.catalog) return null;
+        const direct = state.catalog.get(idOrRsdp);
+        if (direct) return direct.id;
+        const all = state.catalog.all();
+        const byRsdp = all.find((d) => d.rsdp_id === idOrRsdp);
+        return byRsdp?.id || null;
       }
 
       function renderAll() {
@@ -3263,6 +3276,16 @@ message("Saved to ${outName}")
           } else if (state.active[0]) {
             const firstItem = catalogItem(state.active[0].catalogId);
             if (firstItem?.bbox) map.fitBounds(firstItem.bbox, { padding: 40, duration: 0 });
+          }
+
+          // Deep-link: #add=R3D010 or #add=ug-topographic-aspect-southness-component
+          // Adds layers via addActive (full refinement + auto-rescale + zoom).
+          if (saved.add.length && !saved.layers.length) {
+            for (const rawId of saved.add) {
+              const resolved = resolveDeepLinkId(rawId);
+              if (resolved) addActive(resolved);
+              else console.warn("deep-link: unknown id", rawId);
+            }
           }
 
           if (saved.discover) openDiscovery();
