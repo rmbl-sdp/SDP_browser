@@ -124,11 +124,19 @@ function dayOfYear(year, month, day) {
 // Parse the date-like numeric suffix from an item link href.
 // Returns { raw, year, month?, day?, doy?, dateStr } or null.
 function parseLinkDate(href) {
-  // Match the longest trailing digit sequence before the / folder separator.
-  // e.g. "./R4D004_20011101/..." → captures "20011101"
-  //      "./R4D003_2001/..."     → captures "2001"
-  //      "./R4D006_200111/..."   → captures "200111"
-  const m = (href || "").match(/_(\d{4,8})\//);
+  const s = href || "";
+  // Try ISO hyphenated date first: _YYYY-MM-DD/ (drone weekly imagery)
+  const iso = s.match(/_(\d{4})-(\d{2})-(\d{2})\//);
+  if (iso) {
+    const y = +iso[1], mo = +iso[2], d = +iso[3];
+    if (y >= 1950 && y <= 2100 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+      const doy = dayOfYear(y, mo, d);
+      const raw = `${iso[1]}-${iso[2]}-${iso[3]}`;
+      return { raw, year: y, month: mo, day: d, doy, dateStr: `${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}` };
+    }
+  }
+  // Compact numeric dates: _YYYYMMDD/, _YYYYMM/, _YYYY/
+  const m = s.match(/_(\d{4,8})\//);
   if (!m) return null;
   const raw = m[1];
   if (raw.length === 8) {
@@ -186,8 +194,21 @@ function buildTimeseriesTemplate(sampleHref, sampleParsed) {
     else if (tmpl.includes(doy3)) tmpl = tmpl.replace(doy3, "{doy}");
   }
 
-  // Month (2 digits, for monthly granularity; anchored to _MM_ or _month_MM_)
-  if (sampleParsed.month != null && !tmpl.includes("{doy}")) {
+  // Month + Day (for daily data without DOY, e.g. drone imagery _YYYY_MM_DD.tif)
+  // Try this BEFORE the month-only case so both tokens get placed.
+  if (sampleParsed.month != null && sampleParsed.day != null && !tmpl.includes("{doy}")) {
+    const mm = String(sampleParsed.month).padStart(2, "0");
+    const dd = String(sampleParsed.day).padStart(2, "0");
+    // Look for _MM_DD pattern (underscores around month and day)
+    const mdRe = new RegExp(`(_)${mm}(_)${dd}(\\b|[^0-9])`, "g");
+    if (mdRe.test(tmpl)) {
+      tmpl = tmpl.replace(mdRe, `$1{month}$2{day}$3`);
+    } else {
+      // Fallback: month-only (for monthly granularity)
+      const monthRe = new RegExp(`(_(?:month_)?)${mm}(_)`, "g");
+      tmpl = tmpl.replace(monthRe, `$1{month}$2`);
+    }
+  } else if (sampleParsed.month != null && !tmpl.includes("{doy}")) {
     const mm = String(sampleParsed.month).padStart(2, "0");
     const monthRe = new RegExp(`(_(?:month_)?)${mm}(_)`, "g");
     tmpl = tmpl.replace(monthRe, `$1{month}$2`);
@@ -204,9 +225,11 @@ export function resolveTimeseriesUrl(template, dateStr) {
   if (parts.length >= 2 && template.includes("{month}")) {
     url = url.replace("{month}", parts[1]);
   }
+  if (parts.length === 3 && template.includes("{day}")) {
+    url = url.replace("{day}", parts[2]);
+  }
   if (parts.length === 3 && template.includes("{doy}")) {
     const doy = dayOfYear(+parts[0], +parts[1], +parts[2]);
-    // Match the padding used in the template (check for 4-digit vs 3-digit)
     const pad = template.includes("{doy}") && /\d{4}/.test(template.split("{doy}")[0].slice(-1) + "0000")
       ? 4 : (/day_\{doy\}/.test(template) ? 4 : 3);
     url = url.replace("{doy}", String(doy).padStart(pad, "0"));
