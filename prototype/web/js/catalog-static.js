@@ -179,12 +179,13 @@ function buildTimeseriesTemplate(sampleHref, sampleParsed) {
   if (!sampleHref || !sampleParsed) return null;
   let tmpl = sampleHref;
 
-  // Year (4 digits, standalone)
+  // Year (4 digits, standalone). Replace ALL occurrences — the year may
+  // appear in both a directory path and the filename (e.g. /2022/...2022_01_26.tif).
   const yearStr = String(sampleParsed.year);
   const yearRe = new RegExp(`(^|[^0-9])${yearStr}([^0-9]|$)`, "g");
   let yearCount = 0;
   tmpl = tmpl.replace(yearRe, (_, a, b) => { yearCount++; return `${a}{year}${b}`; });
-  if (yearCount !== 1) return null;
+  if (yearCount < 1) return null;
 
   // DOY (3-4 digits, for daily granularity)
   if (sampleParsed.doy != null) {
