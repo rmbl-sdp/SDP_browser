@@ -1469,11 +1469,9 @@
       async function autoRescale(lyr, { force = false } = {}) {
         const item = catalogItem(lyr.catalogId);
         if (!item) return;
-        // Only skip auto-rescale for uint8 RGB (natural 0-255 range).
-        // uint16 multispectral RGB still needs real stats.
         // Skip auto-rescale for uint8 RGB (natural 0-255) and multispectral
-        // RGB (deliberate 0-0.3 reflectance default).
-        if (lyr.mode === "rgb" && (item.dtype === "uint8" || item.bandCount >= 5)) return;
+        // RGB (deliberate 0-0.3 default) — unless force is set (manual click).
+        if (!force && lyr.mode === "rgb" && (item.dtype === "uint8" || item.bandCount >= 5)) return;
         // Categorical layers still benefit from auto-rescale to find the
         // actual class range (e.g. 0-6 instead of 0-255 for uint8).
 
@@ -1511,7 +1509,7 @@
           const hi = toPhysical(rawHi, item);
           const rescale = `${formatBound(lo)},${formatBound(hi)}`;
           autoRescaleCache.set(cacheKey, rescale);
-          applyAutoRescale(lyr, rescale);
+          applyAutoRescale(lyr, rescale, { force });
         } catch (e) {
           console.debug("autoRescale failed for", item.id, e.message || e);
           autoRescaleCache.set(cacheKey, null); // don't keep retrying
@@ -1523,9 +1521,10 @@
         return (+n.toFixed(3)).toString();
       }
 
-      function applyAutoRescale(lyr, rescale) {
+      function applyAutoRescale(lyr, rescale, { force = false } = {}) {
         const item = catalogItem(lyr.catalogId);
-        if (lyr.rescale !== item.default_rescale && lyr.rescale !== rescale) return;
+        // Skip if the user has manually edited the rescale — unless force.
+        if (!force && lyr.rescale !== item.default_rescale && lyr.rescale !== rescale) return;
         lyr.rescale = rescale;
         if (!lyr._pending) {
           reloadMapLayer(lyr);
@@ -2258,13 +2257,14 @@
           }
         }
 
-        // Split presets from advanced band/color controls.
+        // Top-level quick controls: presets for multiband, colormap for singleband.
         const hasPresets = isMb && lyr.mode === "rgb" && item.bands?.length >= 5;
         const presetsBlock = hasPresets ? `
           <div class="dl-row">
             <button data-k="presetNatural" class="dl-btn" style="font-size:10px;">Natural Color</button>
             <button data-k="presetIR" class="dl-btn" style="font-size:10px;">IR False Color</button>
           </div>` : "";
+        const showCmapTopLevel = !isRgbLike;
 
         // Strip the inline presets from bandBlock (they're now top-level).
         const cleanBandBlock = bandBlock.replace(/<label>Presets<\/label>[\s\S]*?<\/div>/, "");
@@ -2272,11 +2272,11 @@
         return `<div class="act-body">
           ${isTs && item.timeseries ? renderTimeseriesControlHTML(lyr, item) : ""}
           ${presetsBlock}
+          ${showCmapTopLevel ? `<label>Colormap</label>${cmapPickerHTML}` : ""}
           <details class="act-advanced">
             <summary>Advanced styling</summary>
             ${cleanBandBlock}
-            <label>Colormap</label>
-            ${cmapPickerHTML}
+            ${showCmapTopLevel ? "" : `<label>Colormap</label>${cmapPickerHTML}`}
             <label>Rescale (min,max)</label>
             <div style="display: flex; gap: 4px;">
               <input data-k="rescale" type="text" value="${lyr.rescale}" style="flex: 1; min-width: 0;" />
