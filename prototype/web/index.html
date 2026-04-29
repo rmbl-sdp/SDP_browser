@@ -1541,8 +1541,7 @@
         (async () => {
           await probeCogInfo(lyr);
           const current = catalogItem(lyr.catalogId);
-          const isRgb = lyr.mode === "rgb";
-          if (!isRgb && current?.rescale_source !== "stac") {
+          if (current?.rescale_source !== "stac") {
             await autoRescale(lyr);
           }
           // Now add tiles with the refined params — single render.
@@ -3303,6 +3302,10 @@ message("Saved to ${outName}")
 
           // Reconcile descriptors against actual COG band counts (STAC can
           // under-report). Runs in the background after layers are on screen.
+          // Reconcile descriptors against actual COG band counts (STAC can
+          // under-report). Runs in the background after layers are on screen.
+          // Auto-rescale is NOT re-run here — the hash carries the rescale
+          // from the previous session. Only addActive runs autoRescale.
           state.active.forEach((l) => probeCogInfo(l));
         };
         if (map.loaded()) onMapReady(); else map.on("load", onMapReady);
