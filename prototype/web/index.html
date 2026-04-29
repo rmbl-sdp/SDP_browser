@@ -2270,10 +2270,8 @@
         const cleanBandBlock = bandBlock.replace(/<label>Presets<\/label>[\s\S]*?<\/div>/, "");
 
         return `<div class="act-body">
-          ${presetsBlock}
-          <label>Opacity <span class="value">${Math.round(lyr.opacity * 100)}%</span></label>
-          <input data-k="opacity" type="range" min="0" max="100" value="${Math.round(lyr.opacity * 100)}" />
           ${isTs && item.timeseries ? renderTimeseriesControlHTML(lyr, item) : ""}
+          ${presetsBlock}
           <details class="act-advanced">
             <summary>Advanced styling</summary>
             ${cleanBandBlock}
@@ -2285,6 +2283,8 @@
               <button data-k="autoRescale" title="Auto-stretch from 2nd–98th percentile"
                       style="width: auto; padding: 4px 6px; font-size: 10px; background: var(--bg-elev-2); color: var(--text); font-weight: normal;">auto</button>
             </div>
+            <label>Opacity <span class="value">${Math.round(lyr.opacity * 100)}%</span></label>
+            <input data-k="opacity" type="range" min="0" max="100" value="${Math.round(lyr.opacity * 100)}" />
           </details>
         </div>`;
       }
