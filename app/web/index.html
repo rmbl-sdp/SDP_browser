@@ -977,8 +977,12 @@
       // Decoupled from `focused()` (which just tracks which row's control panel
       // is open) so hiding the expanded layer doesn't surprise the extraction.
       function targetLayer() { return state.active.find((l) => l.visible) || null; }
-      const mapLayerId = (uid) => `cog-${uid}`;
-      const mapSourceId = (uid) => `cog-${uid}`;
+      // Track the current MapLibre layer/source ID per uid. Starts as the
+      // canonical `cog-{uid}` but changes on each reload to avoid removing
+      // and re-creating layers (which causes double tile fetches).
+      const activeLayerIds = new Map();
+      const mapLayerId = (uid) => activeLayerIds.get(uid) || `cog-${uid}`;
+      const mapSourceId = (uid) => mapLayerId(uid); // source and layer share an ID
 
       function esc(s) {
         if (!s) return "";
@@ -1043,8 +1047,10 @@
 
       function addMapLayer(lyr) {
         const item = catalogItem(lyr.catalogId);
-        const src = mapSourceId(lyr.uid);
-        const mid = mapLayerId(lyr.uid);
+        const canonicalId = `cog-${lyr.uid}`;
+        activeLayerIds.set(lyr.uid, canonicalId);
+        const src = canonicalId;
+        const mid = canonicalId;
         if (map.getLayer(mid)) map.removeLayer(mid);
         if (map.getSource(src)) map.removeSource(src);
         map.addSource(src, {
@@ -1077,49 +1083,53 @@
 
       function reloadMapLayer(lyr) {
         const item = catalogItem(lyr.catalogId);
-        const src = mapSourceId(lyr.uid);
-        const mid = mapLayerId(lyr.uid);
-        const tmpSrc = `${src}-r`;
-        const tmpMid = `${mid}-r`;
+        const oldMid = mapLayerId(lyr.uid);
+        const oldSrc = mapSourceId(lyr.uid);
 
-        // Tear down any previous in-flight reload + its temp source/layer.
         cancelReload(lyr.uid);
-        if (map.getLayer(tmpMid)) map.removeLayer(tmpMid);
-        if (map.getSource(tmpSrc)) map.removeSource(tmpSrc);
 
-        map.addSource(tmpSrc, {
+        // New generation ID — avoids remove+re-create of the same ID.
+        const gen = `cog-${lyr.uid}-${Date.now()}`;
+        const newMid = gen;
+        const newSrc = gen;
+
+        map.addSource(newSrc, {
           type: "raster",
           tiles: [tileUrl(lyr)],
           tileSize: 256,
           ...(item.bbox ? { bounds: item.bbox } : {}),
         });
         map.addLayer({
-          id: tmpMid, type: "raster", source: tmpSrc,
+          id: newMid, type: "raster", source: newSrc,
           layout: { visibility: lyr.visible ? "visible" : "none" },
           paint: { "raster-opacity": lyr.opacity },
         });
+
+        // New layer loads behind the old one → smooth crossfade.
+        if (map.getLayer(oldMid)) map.moveLayer(newMid, oldMid);
 
         let done = false;
         const swap = () => {
           if (done) return;
           done = true;
           cancelReload(lyr.uid);
-          // If the user removed the layer while we were waiting, bail.
           if (!state.active.some((l) => l.uid === lyr.uid)) {
-            if (map.getLayer(tmpMid)) map.removeLayer(tmpMid);
-            if (map.getSource(tmpSrc)) map.removeSource(tmpSrc);
+            if (map.getLayer(newMid)) map.removeLayer(newMid);
+            if (map.getSource(newSrc)) map.removeSource(newSrc);
             return;
           }
-          if (map.getLayer(mid)) map.removeLayer(mid);
-          if (map.getSource(src)) map.removeSource(src);
-          if (map.getLayer(tmpMid)) map.removeLayer(tmpMid);
-          if (map.getSource(tmpSrc)) map.removeSource(tmpSrc);
-          addMapLayer(lyr);
+          // Remove old — new is already visible and loaded.
+          if (map.getLayer(oldMid)) map.removeLayer(oldMid);
+          if (map.getSource(oldSrc)) map.removeSource(oldSrc);
+          // Promote new to canonical tracking. No tile re-fetch.
+          activeLayerIds.set(lyr.uid, newMid);
           reorderMapLayers();
           ensureAoiOnTop();
+          // Prefetch adjacent dates so the next scrub step is cached.
+          prefetchAdjacentDates(lyr);
         };
         const onSourceData = (e) => {
-          if (e.sourceId === tmpSrc && e.isSourceLoaded) swap();
+          if (e.sourceId === newSrc && e.isSourceLoaded) swap();
         };
         map.on("sourcedata", onSourceData);
         const timeout = setTimeout(swap, 8000);
@@ -1128,12 +1138,14 @@
 
       function removeMapLayer(uid) {
         cancelReload(uid);
-        const mid = mapLayerId(uid), src = mapSourceId(uid);
-        const tmpMid = `${mid}-r`, tmpSrc = `${src}-r`;
-        if (map.getLayer(mid)) map.removeLayer(mid);
-        if (map.getSource(src)) map.removeSource(src);
-        if (map.getLayer(tmpMid)) map.removeLayer(tmpMid);
-        if (map.getSource(tmpSrc)) map.removeSource(tmpSrc);
+        // Remove the current layer + any leftover generation layers.
+        for (const sl of [...map.getStyle().layers]) {
+          if (sl.id === `cog-${uid}` || sl.id.startsWith(`cog-${uid}-`)) {
+            map.removeLayer(sl.id);
+            if (map.getSource(sl.source)) map.removeSource(sl.source);
+          }
+        }
+        activeLayerIds.delete(uid);
       }
       function reorderMapLayers() {
         const aoiExists = map.getLayer("aoi-fill");
@@ -1551,6 +1563,8 @@
           ensureAoiOnTop();
           renderAll();
           if (state.aoi) fetchStats();
+          // Start prefetching adjacent dates immediately after initial load.
+          prefetchAdjacentDates(lyr);
         })();
       }
       function removeActive(uid) {
@@ -2013,6 +2027,55 @@
           <div class="ts-cal-grid" data-year="${year}" data-month="${month}">
             ${cells}
           </div>`;
+      }
+
+      // Compute WebMercator tile indices covering the current viewport.
+      function getVisibleTiles() {
+        const z = Math.round(map.getZoom());
+        const bounds = map.getBounds();
+        const n = Math.pow(2, z);
+        const toTileX = (lng) => Math.floor(((lng + 180) / 360) * n);
+        const toTileY = (lat) => Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+        const x0 = Math.max(0, toTileX(bounds.getWest()));
+        const x1 = Math.min(n - 1, toTileX(bounds.getEast()));
+        const y0 = Math.max(0, toTileY(bounds.getNorth()));
+        const y1 = Math.min(n - 1, toTileY(bounds.getSouth()));
+        const tiles = [];
+        for (let x = x0; x <= x1; x++)
+          for (let y = y0; y <= y1; y++)
+            tiles.push({ z, x, y });
+        return tiles;
+      }
+
+      function prefetchAdjacentDates(lyr) {
+        const item = catalogItem(lyr.catalogId);
+        if (!item?.timeseries) return;
+        const dates = item.timeseries.dates;
+        const idx = dates.indexOf(lyr.date);
+        if (idx < 0) return;
+
+        const adjacent = [];
+        if (idx > 0) adjacent.push(dates[idx - 1]);
+        if (idx < dates.length - 1) adjacent.push(dates[idx + 1]);
+
+        const tiles = getVisibleTiles();
+        if (!tiles.length) return;
+        const savedDate = lyr.date;
+        let prefetchCount = 0;
+        for (const date of adjacent) {
+          lyr.date = date;
+          const urlTemplate = tileUrl(lyr);
+          lyr.date = savedDate;
+          for (const { z, x, y } of tiles) {
+            const url = urlTemplate
+              .replace("{z}", z).replace("{x}", x).replace("{y}", y);
+            // Use fetch() with mode:"cors" to match MapLibre's request
+            // signature so the browser shares the same cache entry.
+            fetch(url, { mode: "cors" }).catch(() => {});
+            prefetchCount++;
+          }
+        }
+        console.debug(`[prefetch] ${lyr.catalogId}: ${adjacent.length} dates × ${tiles.length} tiles = ${prefetchCount} requests`);
       }
 
       function changeDate(lyr, newDate) {

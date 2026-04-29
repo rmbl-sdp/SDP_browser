@@ -56,6 +56,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def add_cache_headers(request, call_next):
+    """Add Cache-Control to tile responses so the browser caches them."""
+    response = await call_next(request)
+    if "/tiles/" in request.url.path:
+        response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
+
 cog = TilerFactory(reader=SDPReader)
 app.include_router(cog.router, prefix="/cog", tags=["COG"])
 add_exception_handlers(app, DEFAULT_STATUS_CODES)
