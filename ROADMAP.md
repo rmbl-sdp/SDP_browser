@@ -4,21 +4,31 @@ Living document tracking what's shipped, what's next, and what's on the horizon.
 
 ## Shipped
 
-### Prototype (local sandbox)
-- STAC catalog discovery: client-side BFS walk with IndexedDB cache, faceted search (domain / release / type / resolution / bands), card grid with collection thumbnails, item detail with "Add to Map" + "Open in STAC Browser".
-- Active layers: drag-to-reorder, per-layer styling (colormap with gradient picker, rescale with auto 2nd–98th percentile, opacity, band selection for multiband, year scrubber for time-series).
+### Prototype + production app
+- STAC catalog discovery: client-side BFS walk with IndexedDB cache, faceted search (domain / release / type / resolution / bands), card grid with collection thumbnails, item detail with prominent "Add to Map" + download dataset/metadata + "Open in STAC Browser".
+- Active layers: drag-to-reorder, per-layer styling (colormap with gradient picker, rescale with auto 2nd–98th percentile, opacity, band selection for multiband). Collapsible "Advanced styling" panel keeps the default view clean.
+- Unified time-series controls: automatic granularity detection (yearly / monthly / daily / irregular), shared stepper (◀ prev / date label / next ▶), year picker, month grid, or mini calendar with available-date highlighting. Prefetch for adjacent dates via browser cache.
+- Multispectral support: 5-band drone imagery defaults to natural color (3,2,1) at 0–0.3 reflectance stretch. Presets for Natural Color and IR False Color (4,2,1).
+- Categorical layer support: qualitative colormaps (tab10/tab20/set1...) with discrete legend blocks.
+- RMBL Design System: warm-dark palette, Jost + JetBrains Mono fonts, design-system spacing/radii/shadows.
+- Deep links: `#add=R3D009` or `#add=ug-bare-earth-digital-elevation-model` opens layers by rsdp_id or collection slug.
 - AOI extraction: draw bbox, per-band histograms (colormap-matched), GeoTIFF/PNG subset download, R and Python code snippet copy, Jupyter notebook (.ipynb) and R Markdown (.Rmd) download with metadata, visualization, and export cells.
-- Map overlays: Esri labels + roads, RMBL ArcGIS research sites (click-to-AOI).
-- URL hash: full session state (layers, view, discovery filters) is shareable and survives reload.
-- Collapsible / resizable sidebar, RMBL branding.
+- Map overlays: Esri labels + roads, RMBL ArcGIS research sites (click-to-AOI). Default landcover basemap at 50% opacity.
+- URL hash: full session state (layers, view, discovery filters, dates) is shareable and survives reload.
+- Collapsible / resizable sidebar. Fly-to-extent on layer add.
 - `/cog/info` probe to fix STAC items that under-report band count.
+- Scale/offset applied from STAC `raster:bands` for physical-unit display.
+- CRS fallback in TiTiler for COGs missing coordinate system metadata.
+- Cache-Control headers on tile responses for browser + CDN caching.
 
-### Infrastructure scaffold
-- `services/titiler/`: production Docker image with env-configurable CORS.
+### Infrastructure (deployed)
+- `services/titiler/`: production Docker image with env-configurable CORS, URL allowlist, CRS fallback, Cache-Control headers.
 - `app/web/`: production frontend with runtime `config.js` shim.
-- `infra/`: Terraform modules (network, ECR, ALB, ECS, CloudFront API + site, WAF, IAM OIDC), bootstrap for S3 state backend, staging + prod env compositions. All `terraform validate` clean.
+- `infra/`: Terraform modules deployed to staging (account 254459631110, us-east-2). VPC, Fargate, ALB (CF-locked), CloudFront × 2, WAF, S3 site bucket, OIDC deploy role.
+- Custom domain: `sdpbrowser.org` + `api.sdpbrowser.org` with wildcard ACM cert.
 - `.github/workflows/`: CI (fmt, validate, docker build) + OIDC deploy workflows (staging on main, prod on tag).
 - `.githooks/pre-commit`: secret + size guardrails.
+- Security hardening: XSS escaping, IAM scoped to specific distributions, URL allowlist on TiTiler, CORS restricted.
 
 ### CHESS Analysis Hub environment
 - `pysdp[all]` added to pip deps.
