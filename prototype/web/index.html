@@ -253,6 +253,17 @@
         font-size: 12px; box-sizing: border-box;
       }
       .act-body input[type="range"] { width: 100%; }
+      .act-advanced {
+        margin-top: 8px;
+        border-top: 1px dashed var(--border);
+        padding-top: 6px;
+      }
+      .act-advanced summary {
+        font-size: 11px; color: var(--muted);
+        cursor: pointer; user-select: none;
+        margin-bottom: 6px;
+      }
+      .act-advanced summary:hover { color: var(--text); }
 
       .cmap-picker { position: relative; }
       .cmap-picker-btn {
@@ -2247,19 +2258,34 @@
           }
         }
 
+        // Split presets from advanced band/color controls.
+        const hasPresets = isMb && lyr.mode === "rgb" && item.bands?.length >= 5;
+        const presetsBlock = hasPresets ? `
+          <div class="dl-row">
+            <button data-k="presetNatural" class="dl-btn" style="font-size:10px;">Natural Color</button>
+            <button data-k="presetIR" class="dl-btn" style="font-size:10px;">IR False Color</button>
+          </div>` : "";
+
+        // Strip the inline presets from bandBlock (they're now top-level).
+        const cleanBandBlock = bandBlock.replace(/<label>Presets<\/label>[\s\S]*?<\/div>/, "");
+
         return `<div class="act-body">
-          ${bandBlock}
-          <label>Colormap</label>
-          ${cmapPickerHTML}
-          <label>Rescale (min,max)</label>
-          <div style="display: flex; gap: 4px;">
-            <input data-k="rescale" type="text" value="${lyr.rescale}" style="flex: 1; min-width: 0;" />
-            <button data-k="autoRescale" title="Auto-stretch from 2nd–98th percentile"
-                    style="width: auto; padding: 4px 6px; font-size: 10px; background: var(--bg-elev-2); color: var(--text); font-weight: normal;">auto</button>
-          </div>
+          ${presetsBlock}
           <label>Opacity <span class="value">${Math.round(lyr.opacity * 100)}%</span></label>
           <input data-k="opacity" type="range" min="0" max="100" value="${Math.round(lyr.opacity * 100)}" />
           ${isTs && item.timeseries ? renderTimeseriesControlHTML(lyr, item) : ""}
+          <details class="act-advanced">
+            <summary>Advanced styling</summary>
+            ${cleanBandBlock}
+            <label>Colormap</label>
+            ${cmapPickerHTML}
+            <label>Rescale (min,max)</label>
+            <div style="display: flex; gap: 4px;">
+              <input data-k="rescale" type="text" value="${lyr.rescale}" style="flex: 1; min-width: 0;" />
+              <button data-k="autoRescale" title="Auto-stretch from 2nd–98th percentile"
+                      style="width: auto; padding: 4px 6px; font-size: 10px; background: var(--bg-elev-2); color: var(--text); font-weight: normal;">auto</button>
+            </div>
+          </details>
         </div>`;
       }
 
