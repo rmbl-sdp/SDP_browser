@@ -1105,8 +1105,8 @@
           paint: { "raster-opacity": lyr.opacity },
         });
 
-        // New layer loads behind the old one → smooth crossfade.
-        if (map.getLayer(oldMid)) map.moveLayer(newMid, oldMid);
+        // New layer loads on top of the old one. Old is removed once new
+        // is ready. Avoids transparency stacking artifacts.
 
         let done = false;
         const swap = () => {
@@ -2031,7 +2031,7 @@
 
       // Compute WebMercator tile indices covering the current viewport.
       function getVisibleTiles() {
-        const z = Math.round(map.getZoom());
+        const z = Math.floor(map.getZoom());
         const bounds = map.getBounds();
         const n = Math.pow(2, z);
         const toTileX = (lng) => Math.floor(((lng + 180) / 360) * n);
@@ -2075,7 +2075,18 @@
             prefetchCount++;
           }
         }
-        console.debug(`[prefetch] ${lyr.catalogId}: ${adjacent.length} dates × ${tiles.length} tiles = ${prefetchCount} requests`);
+        // Log a sample URL so we can compare with MapLibre's actual tile requests.
+        console.debug(`[prefetch] ${lyr.catalogId}: ${adjacent.length} dates × ${tiles.length} tiles = ${prefetchCount} requests (mapZoom=${map.getZoom().toFixed(2)}, tileZ=${tiles[0]?.z})`);
+        if (prefetchCount > 0 && tiles[0]) {
+          const sampleTile = tiles[0];
+          const sampleDate = adjacent[0];
+          const savedD = lyr.date;
+          lyr.date = sampleDate;
+          const sampleUrl = tileUrl(lyr)
+            .replace("{z}", sampleTile.z).replace("{x}", sampleTile.x).replace("{y}", sampleTile.y);
+          lyr.date = savedD;
+          console.debug(`[prefetch sample] ${sampleUrl}`);
+        }
       }
 
       function changeDate(lyr, newDate) {
