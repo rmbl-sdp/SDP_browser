@@ -1460,7 +1460,9 @@
         if (!item) return;
         // Only skip auto-rescale for uint8 RGB (natural 0-255 range).
         // uint16 multispectral RGB still needs real stats.
-        if (lyr.mode === "rgb" && item.dtype === "uint8") return;
+        // Skip auto-rescale for uint8 RGB (natural 0-255) and multispectral
+        // RGB (deliberate 0-0.3 reflectance default).
+        if (lyr.mode === "rgb" && (item.dtype === "uint8" || item.bandCount >= 5)) return;
         // Categorical layers still benefit from auto-rescale to find the
         // actual class range (e.g. 0-6 instead of 0-255 for uint8).
 
