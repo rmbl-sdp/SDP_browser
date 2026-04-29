@@ -331,7 +331,7 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
         granularity: fastDates.granularity,
         dates: fastDates.dates,
         url_template: tmpl,
-        default_date: fastDates.sampleParsed.dateStr,
+        default_date: fastDates.dates[fastDates.dates.length - 1],
       };
       // Timeseries can also be multiband RGB (e.g. drone imagery, uint8 or uint16).
       if (bandCount >= 3) {
