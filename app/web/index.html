@@ -1554,7 +1554,7 @@
         };
         state.active.unshift(lyr);
         state.expandedUid = lyr.uid;
-        if (state.active.length === 1 && item.bbox) {
+        if (item.bbox) {
           map.fitBounds(item.bbox, { padding: 40, duration: 600 });
         }
         renderAll();
