@@ -1037,7 +1037,11 @@
         const spec = renderSpec(lyr, item);
         spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
         if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", lyr.colormap);
-        if (item._nodata != null) u.searchParams.set("nodata", item._nodata);
+        // Pass nodata so TiTiler renders those pixels as transparent.
+        // For RGB uint8 without declared nodata, default to 0 (black = nodata
+        // is the standard convention for aerial/drone imagery).
+        const nodata = item._nodata ?? (lyr.mode === "rgb" && item.dtype === "uint8" ? 0 : null);
+        if (nodata != null) u.searchParams.set("nodata", nodata);
         return u.toString().replace(/%7B/g, "{").replace(/%7D/g, "}");
       }
 
@@ -1442,8 +1446,9 @@
       async function autoRescale(lyr, { force = false } = {}) {
         const item = catalogItem(lyr.catalogId);
         if (!item) return;
-        // RGB multiband composite is always 0–255 (uint8); skip.
-        if (lyr.mode === "rgb") return;
+        // Only skip auto-rescale for uint8 RGB (natural 0-255 range).
+        // uint16 multispectral RGB still needs real stats.
+        if (lyr.mode === "rgb" && item.dtype === "uint8") return;
         // Categorical layers still benefit from auto-rescale to find the
         // actual class range (e.g. 0-6 instead of 0-255 for uint8).
 
