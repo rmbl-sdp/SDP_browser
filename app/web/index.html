@@ -2216,12 +2216,19 @@
         if (isMb) {
           if (lyr.mode === "rgb") {
             const [r, g, b] = lyr.bidx || item.default_bidx || [1, 2, 3];
+            const presets = item.bands && item.bands.length >= 5 ? `
+              <label>Presets</label>
+              <div class="dl-row">
+                <button data-k="presetNatural" class="dl-btn" style="font-size:10px;">Natural Color</button>
+                <button data-k="presetIR" class="dl-btn" style="font-size:10px;">IR False Color</button>
+              </div>` : "";
             bandBlock = `
               <label>Display mode</label>
               <select data-k="mode">
                 <option value="rgb" selected>RGB composite</option>
                 <option value="single">Single band</option>
               </select>
+              ${presets}
               <label>Red band</label>   <select data-k="bR">${bandOpts(r)}</select>
               <label>Green band</label> <select data-k="bG">${bandOpts(g)}</select>
               <label>Blue band</label>  <select data-k="bB">${bandOpts(b)}</select>`;
@@ -2287,6 +2294,25 @@
           });
         };
         wireBand("bR", 0); wireBand("bG", 1); wireBand("bB", 2);
+
+        // Multispectral presets (5+ bands)
+        const applyPreset = (bidx, rescale) => {
+          lyr.bidx = bidx;
+          if (rescale) lyr.rescale = rescale;
+          reloadMapLayer(lyr);
+          renderMapLegend();
+          renderActive();
+          if (state.aoi) fetchStats();
+          updateAoiDownloads();
+          updateHash();
+        };
+        body.querySelector('[data-k="presetNatural"]')?.addEventListener("click", () => {
+          applyPreset([3, 2, 1], "0,0.4");
+        });
+        body.querySelector('[data-k="presetIR"]')?.addEventListener("click", () => {
+          applyPreset([4, 2, 1], "0,0.4");
+        });
+
         body.querySelector('[data-k="bSingle"]')?.addEventListener("change", (e) => {
           lyr.bidx = [+e.target.value];
           reloadMapLayer(lyr);

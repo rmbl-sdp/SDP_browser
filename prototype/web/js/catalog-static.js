@@ -336,9 +336,20 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
       // Timeseries can also be multiband RGB (e.g. drone imagery, uint8 or uint16).
       if (bandCount >= 3) {
         desc.default_mode = "rgb";
-        desc.default_bidx = [1, 2, 3];
-        desc.bands = bands.map((b, i) => ({ idx: i + 1, name: b.name || b.description || `Band ${i + 1}` }));
+        // 5+ bands = multispectral (B/G/R/NIR/RE): default to natural color 3,2,1.
+        // 3-4 bands = standard RGB: default to 1,2,3.
+        const MULTISPECTRAL_NAMES = ["Blue", "Green", "Red", "NIR", "Red Edge"];
+        desc.default_bidx = bandCount >= 5 ? [3, 2, 1] : [1, 2, 3];
+        desc.bands = bands.map((b, i) => ({
+          idx: i + 1,
+          name: b.name || b.description || (bandCount >= 5 && i < MULTISPECTRAL_NAMES.length ? MULTISPECTRAL_NAMES[i] : `Band ${i + 1}`),
+        }));
         desc.default_colormap = null;
+        // Multispectral reflectance: default rescale to 0-0.4 (physical).
+        if (bandCount >= 5 && desc.scale) {
+          desc.default_rescale = "0,0.4";
+          desc.rescale_source = "heuristic";
+        }
       }
     } else {
       desc.kind = "singleband";
