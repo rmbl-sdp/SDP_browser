@@ -1444,7 +1444,7 @@
         const item = catalogItem(lyr.catalogId);
         if (!item) return;
         // RGB multiband composite is always 0–255 (uint8); skip.
-        if (item.kind === "multiband" && lyr.mode === "rgb") return;
+        if (lyr.mode === "rgb") return;
         // Categorical layers still benefit from auto-rescale to find the
         // actual class range (e.g. 0-6 instead of 0-255 for uint8).
 
@@ -1537,7 +1537,7 @@
         (async () => {
           await probeCogInfo(lyr);
           const current = catalogItem(lyr.catalogId);
-          const isRgb = current?.kind === "multiband" && lyr.mode === "rgb";
+          const isRgb = lyr.mode === "rgb";
           if (!isRgb && current?.rescale_source !== "stac") {
             await autoRescale(lyr);
           }
@@ -2116,8 +2116,8 @@
 
       function renderActBodyHTML(lyr, item) {
         const isTs = item.kind === "timeseries";
-        const isMb = item.kind === "multiband";
-        const isRgbLike = item.kind === "rgb" || (isMb && lyr.mode === "rgb");
+        const isMb = item.kind === "multiband" || (item.bands && item.default_mode);
+        const isRgbLike = item.kind === "rgb" || lyr.mode === "rgb";
         const cmapGradient = (name) => `linear-gradient(to right, ${(COLORMAPS[name] || COLORMAPS.viridis).join(",")})`;
         const cmapPickerHTML = isRgbLike
           ? `<div class="cmap-picker-btn" disabled style="background:#333942;">(RGB composite)<span class="chev"></span></div>`
@@ -2287,7 +2287,7 @@
         root.className = "";
         root.innerHTML = entries.map((lyr) => {
           const item = catalogItem(lyr.catalogId);
-          const isRgb = item.kind === "rgb" || (item.kind === "multiband" && lyr.mode === "rgb");
+          const isRgb = item.kind === "rgb" || lyr.mode === "rgb";
           const dateBit = lyr.date != null ? ` · ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "";
 
           if (isRgb) {
@@ -2613,7 +2613,7 @@ subset.rio.to_raster("${outName}")
           if (g === "yearly") openCall = `pysdp.open_raster("${id}", years=[${lyr.date}])`;
           else openCall = `pysdp.open_raster("${id}", date_start="${lyr.date}${g === "monthly" ? "-01" : ""}", date_end="${lyr.date}${g === "monthly" ? "-28" : ""}")`;
         }
-        const isRgb = item.kind === "multiband" && lyr.mode === "rgb";
+        const isRgb = lyr.mode === "rgb";
 
         const metaRows = [
           ["Catalog ID", id],
@@ -2925,7 +2925,7 @@ message("Saved to ${outName}")
           if (s.histogram && s.histogram.length === 2) {
             const [counts, edges] = s.histogram;
             let fillFn;
-            const isRgbLikeStats = item.kind === "rgb" || (item.kind === "multiband" && lyr.mode === "rgb");
+            const isRgbLikeStats = item.kind === "rgb" || lyr.mode === "rgb";
             if (isRgbLikeStats) {
               const c = rgbBandColors[bk] || "#F05028";
               fillFn = () => c;

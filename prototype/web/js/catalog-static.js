@@ -222,14 +222,14 @@ function buildTimeseriesTemplate(sampleHref, sampleParsed) {
 export function resolveTimeseriesUrl(template, dateStr) {
   if (!template || !dateStr) return null;
   const parts = dateStr.split("-");
-  let url = template.replace("{year}", parts[0]);
-  if (parts.length >= 2 && template.includes("{month}")) {
-    url = url.replace("{month}", parts[1]);
+  let url = template.replaceAll("{year}", parts[0]);
+  if (parts.length >= 2) {
+    url = url.replaceAll("{month}", parts[1]);
   }
-  if (parts.length === 3 && template.includes("{day}")) {
-    url = url.replace("{day}", parts[2]);
+  if (parts.length === 3) {
+    url = url.replaceAll("{day}", parts[2]);
   }
-  if (parts.length === 3 && template.includes("{doy}")) {
+  if (parts.length === 3 && url.includes("{doy}")) {
     const doy = dayOfYear(+parts[0], +parts[1], +parts[2]);
     const pad = template.includes("{doy}") && /\d{4}/.test(template.split("{doy}")[0].slice(-1) + "0000")
       ? 4 : (/day_\{doy\}/.test(template) ? 4 : 3);
