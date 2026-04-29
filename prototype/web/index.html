@@ -1037,11 +1037,7 @@
         const spec = renderSpec(lyr, item);
         spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
         if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", lyr.colormap);
-        // Pass nodata so TiTiler renders those pixels as transparent.
-        // For RGB uint8 without declared nodata, default to 0 (black = nodata
-        // is the standard convention for aerial/drone imagery).
-        const nodata = item._nodata ?? (lyr.mode === "rgb" && item.dtype === "uint8" ? 0 : null);
-        if (nodata != null) u.searchParams.set("nodata", nodata);
+        if (item._nodata != null) u.searchParams.set("nodata", item._nodata);
         return u.toString().replace(/%7B/g, "{").replace(/%7D/g, "}");
       }
 
@@ -1392,7 +1388,11 @@
         const item = catalogItem(lyr.catalogId);
         if (!item) return;
         // Stash nodata so autoRescale + tile URLs can exclude it.
-        if (info.nodata != null && info.nodata !== "none") {
+        // Prefer the STAC-level value (from raster:bands[0].nodata, already on
+        // the descriptor) over /cog/info (which may not have it).
+        if (item.nodata != null) {
+          item._nodata = item.nodata;
+        } else if (info.nodata != null && info.nodata !== "none") {
           item._nodata = info.nodata;
         }
         // Stash scale/offset for physical-unit display. Prefer the STAC-level

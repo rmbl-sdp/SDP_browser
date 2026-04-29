@@ -312,6 +312,7 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
     scale: (typeof bands[0]?.scale === "number" && bands[0].scale !== 0) ? bands[0].scale : null,
     offset: typeof bands[0]?.offset === "number" ? bands[0].offset : null,
     categorical: bands[0]?.unit === "categorical",
+    nodata: bands[0]?.nodata ?? null,
     bandCount,
     dtype,
     stacItemUrl: firstItem?.links?.find((l) => l.rel === "self")?.href
