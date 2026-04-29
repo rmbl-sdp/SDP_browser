@@ -332,6 +332,13 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
         url_template: tmpl,
         default_date: fastDates.sampleParsed.dateStr,
       };
+      // Timeseries can also be multiband RGB (e.g. drone imagery, uint8 or uint16).
+      if (bandCount >= 3) {
+        desc.default_mode = "rgb";
+        desc.default_bidx = [1, 2, 3];
+        desc.bands = bands.map((b, i) => ({ idx: i + 1, name: b.name || b.description || `Band ${i + 1}` }));
+        desc.default_colormap = null;
+      }
     } else {
       desc.kind = "singleband";
       desc.cog_url = asset?.href;

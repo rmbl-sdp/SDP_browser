@@ -1519,8 +1519,8 @@
           rescale: item.default_rescale || "0,1",
           date: item.kind === "timeseries" && item.timeseries
             ? (item.timeseries.default_date ?? item.timeseries.dates[0]) : null,
-          mode: item.kind === "multiband" ? (item.default_mode || "rgb") : null,
-          bidx: item.kind === "multiband" ? (item.default_bidx || [1, 2, 3]).slice() : null,
+          mode: (item.kind === "multiband" || item.default_mode) ? (item.default_mode || "rgb") : null,
+          bidx: (item.kind === "multiband" || item.default_bidx) ? (item.default_bidx || [1, 2, 3]).slice() : null,
           _pending: true, // tiles deferred until refinement completes
         };
         state.active.unshift(lyr);
@@ -3244,8 +3244,8 @@ message("Saved to ${outName}")
                 year: item.kind === "timeseries"
                   ? (kv.d || kv.y || item.timeseries?.default_date || item.timeseries?.dates?.[0])
                   : null,
-                mode: item.kind === "multiband" ? (item.default_mode || "rgb") : null,
-                bidx: item.kind === "multiband" ? (item.default_bidx || [1, 2, 3]).slice() : null,
+                mode: (item.kind === "multiband" || item.default_mode) ? (item.default_mode || "rgb") : null,
+                bidx: (item.kind === "multiband" || item.default_bidx) ? (item.default_bidx || [1, 2, 3]).slice() : null,
               };
               state.active.push(lyr); // preserve saved order (top of hash = top of stack)
               addMapLayer(lyr);
