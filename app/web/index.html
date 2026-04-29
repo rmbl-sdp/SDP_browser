@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>SDP Browser — Prototype</title>
+    <title>SDP Browser</title>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -518,6 +518,53 @@
       .maplibregl-ctrl-group button {
         background-color: transparent !important;
       }
+      /* ---------- Welcome modal ---------- */
+      #welcomeModal {
+        position: fixed; inset: 0; z-index: 200;
+        display: flex; align-items: center; justify-content: center;
+      }
+      #welcomeModal[hidden] { display: none; }
+      .welcome-backdrop {
+        position: absolute; inset: 0;
+        background: rgba(14, 14, 8, 0.75);
+        backdrop-filter: blur(4px);
+      }
+      .welcome-content {
+        position: relative;
+        background: var(--bg-elev-1);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--r-xl);
+        box-shadow: var(--shadow-3);
+        padding: 32px 36px;
+        max-width: 520px;
+        width: 90%;
+        color: var(--text);
+      }
+      .welcome-content h2 {
+        font-size: 22px; font-weight: 600;
+        margin: 0 0 12px; color: var(--accent);
+      }
+      .welcome-content > p {
+        font-size: 14px; line-height: 1.5;
+        color: var(--fg-2); margin: 0 0 20px;
+      }
+      .welcome-features {
+        display: flex; flex-direction: column; gap: 12px;
+        margin-bottom: 24px;
+      }
+      .welcome-feature {
+        display: flex; gap: 10px; font-size: 13px; line-height: 1.4;
+      }
+      .welcome-feature strong {
+        flex: 0 0 auto; white-space: nowrap;
+      }
+      .welcome-feature span {
+        color: var(--fg-2);
+      }
+      .welcome-content button {
+        width: 100%;
+      }
+
       /* ---------- Time-series controls ---------- */
       .ts-control { margin-top: 8px; }
       .ts-stepper {
@@ -778,7 +825,7 @@
           <a href="https://rmbl.org" target="_blank" rel="noopener">
             <img src="./rmbl-logo.png" alt="RMBL" />
           </a>
-          <span>SDP Browser — Prototype</span>
+          <span>SDP Browser <span style="font-size:10px;color:var(--muted);font-weight:400;">v0.1</span></span>
         </h1>
         <div class="subtitle">Find and Explore Geospatial Data from the Spatial Data Platform</div>
 
@@ -837,6 +884,34 @@
       </div>
     </div>
     <button id="sidebarToggle" type="button" aria-label="Toggle sidebar">‹</button>
+
+    <!-- ==== Welcome modal ==== -->
+    <div id="welcomeModal" hidden>
+      <div class="welcome-backdrop"></div>
+      <div class="welcome-content">
+        <h2>Welcome to the SDP Browser</h2>
+        <p>Discover, explore, and extract geospatial data from the <strong>RMBL Spatial Data Platform</strong> — a curated collection of high-resolution datasets for western Colorado.</p>
+        <div class="welcome-features">
+          <div class="welcome-feature">
+            <strong>🔍 Discover</strong>
+            <span>Search and filter datasets by domain, type, resolution, and more. Click <em>Discover layers</em> to browse the full catalog.</span>
+          </div>
+          <div class="welcome-feature">
+            <strong>🗺️ Explore</strong>
+            <span>Add layers to the map with dynamic visualization. Scrub through time-series, adjust colormaps, and switch band combinations.</span>
+          </div>
+          <div class="welcome-feature">
+            <strong>📥 Extract</strong>
+            <span>Draw an Area of Interest to get zonal statistics, download GeoTIFF/PNG subsets, or generate ready-to-run R and Python notebooks.</span>
+          </div>
+          <div class="welcome-feature">
+            <strong>🔗 Share</strong>
+            <span>Every view is encoded in the URL. Copy the address bar to share your exact map state with collaborators.</span>
+          </div>
+        </div>
+        <button id="welcomeDismiss">Get started</button>
+      </div>
+    </div>
 
     <!-- ==== Discovery drawer ==== -->
     <div id="discoveryDrawer" hidden>
@@ -3307,6 +3382,15 @@ message("Saved to ${outName}")
       }
 
       // ---------- sidebar collapse + resize ----------
+      // ---------- welcome modal (first visit only) ----------
+      if (!localStorage.getItem("sdp-welcome-seen")) {
+        document.getElementById("welcomeModal").hidden = false;
+      }
+      document.getElementById("welcomeDismiss").addEventListener("click", () => {
+        document.getElementById("welcomeModal").hidden = true;
+        localStorage.setItem("sdp-welcome-seen", "1");
+      });
+
       const appEl = document.getElementById("app");
       const panelEl = document.getElementById("panel");
       const sidebarToggle = document.getElementById("sidebarToggle");
