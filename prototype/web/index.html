@@ -1863,15 +1863,42 @@
         const thumbHtml = d.thumbnail
           ? `<img class="dd-detail-thumb" src="${d.thumbnail}" alt="Thumbnail for ${esc(d.title)}" />`
           : "";
+        // Download links: single datasets → direct COG URL; time-series → download_links.html
+        const cogUrl = d.cog_url || (d.timeseries?.url_template || "");
+        let downloadDataUrl = null;
+        let downloadLabel = "Download dataset";
+        if (d.kind === "timeseries" && d.timeseries?.url_template) {
+          // Derive the directory from the template and link to download_links.html
+          const tmpl = d.timeseries.url_template;
+          const dirUrl = tmpl.substring(0, tmpl.lastIndexOf("/") + 1);
+          // Strip tokens from the dir path for the base directory
+          const cleanDir = dirUrl.replaceAll("{year}", "").replaceAll("{month}", "").replaceAll("{day}", "").replaceAll("{doy}", "").replace(/\/+$/, "/");
+          // Go up one level if the dir itself has token remnants
+          const parts = cleanDir.replace(/\/$/, "").split("/");
+          // Find the last non-empty path segment
+          const baseDir = parts.slice(0, -1).join("/") + "/";
+          downloadDataUrl = baseDir + "download_links.html";
+          downloadLabel = "Download all files";
+        } else if (d.cog_url) {
+          downloadDataUrl = d.cog_url;
+        }
+
+        // Metadata download: the STAC item JSON
+        const metadataUrl = d.stacItemUrl || d.stacCollectionUrl || null;
+
         root.innerHTML = `
           ${thumbHtml}
           <h3 class="title">${esc(d.title)}</h3>
-          <div class="desc">${esc(d.description)}</div>
-          <div class="meta">${metaHtml}</div>
-          <div class="actions">
+          <div class="actions" style="margin-bottom: 12px;">
             <button class="add ${added ? "added" : ""}" ${added || !canAdd ? "disabled" : ""}>
               ${added ? "✓ Already on map" : canAdd ? "Add to Map" : "Unsupported — open in STAC Browser"}
             </button>
+          </div>
+          <div class="desc">${esc(d.description)}</div>
+          <div class="meta">${metaHtml}</div>
+          <div class="actions">
+            ${downloadDataUrl ? `<a class="stac-link" target="_blank" rel="noopener" href="${downloadDataUrl}">${esc(downloadLabel)} ↗</a>` : ""}
+            ${metadataUrl ? `<a class="stac-link" target="_blank" rel="noopener" href="${metadataUrl}">Download metadata (JSON) ↗</a>` : ""}
             ${stacUrl ? `<a class="stac-link" target="_blank" rel="noopener" href="${stacBrowserLink(stacUrl)}">Open in STAC Browser ↗</a>` : ""}
           </div>`;
         root.querySelector(".add")?.addEventListener("click", () => {
