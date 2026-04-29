@@ -345,11 +345,6 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
           name: b.name || b.description || (bandCount >= 5 && i < MULTISPECTRAL_NAMES.length ? MULTISPECTRAL_NAMES[i] : `Band ${i + 1}`),
         }));
         desc.default_colormap = null;
-        // Multispectral reflectance: default rescale to 0-0.4 (physical).
-        if (bandCount >= 5 && desc.scale) {
-          desc.default_rescale = "0,0.4";
-          desc.rescale_source = "heuristic";
-        }
       }
     } else {
       desc.kind = "singleband";
@@ -381,6 +376,13 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
   const rs = pickRescale(bands[0], desc, collection);
   desc.default_rescale = rs.rescale;
   desc.rescale_source = rs.source;
+
+  // Multispectral reflectance override (must come AFTER pickRescale).
+  // Use source="stac" so autoRescale doesn't override this deliberate default.
+  if (bandCount >= 5 && desc.default_mode === "rgb" && desc.scale) {
+    desc.default_rescale = "0,0.3";
+    desc.rescale_source = "stac";
+  }
   return desc;
 }
 
