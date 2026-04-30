@@ -54,12 +54,70 @@
         font-family: var(--font-sans);
         color: var(--text);
         background: var(--bg);
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ---------- Top bar ---------- */
+      #topbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 44px;
+        padding: 0 16px;
+        background: var(--bg-elev-1);
+        border-bottom: 1px solid var(--border);
+        flex: 0 0 auto;
+        z-index: 60;
+      }
+      #topbar .brand {
+        display: flex; align-items: center; gap: 8px;
+        text-decoration: none; color: var(--text);
+      }
+      #topbar .brand img { height: 22px; width: auto; }
+      #topbar .brand span { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+      #topbar .brand .ver { font-size: 10px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+      #topbar nav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+      #topbar nav a, #topbar nav .nav-btn {
+        color: var(--fg-2); font-size: 13px; font-weight: 500;
+        text-decoration: none; padding: 6px 10px; border-radius: var(--r-md);
+        background: transparent; border: 0; cursor: pointer;
+        font-family: var(--font-sans);
+      }
+      #topbar nav a:hover, #topbar nav .nav-btn:hover {
+        color: var(--text); background: rgba(244,238,228,0.06);
+      }
+      .nav-dropdown {
+        position: relative; display: inline-block;
+      }
+      .nav-dropdown-menu {
+        display: none;
+        position: absolute; right: 0; top: calc(100% + 4px);
+        background: var(--bg-elev-2);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--r-lg);
+        box-shadow: var(--shadow-2);
+        min-width: 200px; padding: 4px;
+        z-index: 70;
+      }
+      .nav-dropdown.open .nav-dropdown-menu { display: block; }
+      .nav-dropdown-menu a {
+        display: block; padding: 8px 12px;
+        color: var(--fg-2); font-size: 13px;
+        text-decoration: none; border-radius: var(--r-md);
+      }
+      .nav-dropdown-menu a:hover {
+        color: var(--text); background: rgba(244,238,228,0.06);
+      }
+      .nav-dropdown-menu a .desc {
+        display: block; font-size: 11px; color: var(--muted);
+        margin-top: 2px;
       }
       :root { --sidebar-width: 340px; }
       #app {
         display: grid;
         grid-template-columns: var(--sidebar-width) 1fr;
-        height: 100vh;
+        flex: 1; min-height: 0;
       }
       #app.collapsed { --sidebar-width: 0px; }
       #panel {
@@ -818,15 +876,31 @@
     </style>
   </head>
   <body>
+    <div id="topbar">
+      <a class="brand" href="https://rmbl.org" target="_blank" rel="noopener">
+        <img src="./rmbl-logo.png" alt="RMBL" />
+        <span>SDP Browser<span class="ver">v0.1</span></span>
+      </a>
+      <nav>
+        <a href="https://www.rmbl.org/scientists/resources/spatial-data-platform/" target="_blank" rel="noopener">About</a>
+        <div class="nav-dropdown" id="navTools">
+          <button class="nav-btn" data-toggle="navTools">Research Tools ▾</button>
+          <div class="nav-dropdown-menu">
+            <a href="https://rmblknowledgehub.org" target="_blank" rel="noopener">
+              RMBL Knowledge Hub
+              <span class="desc">Search publications, protocols, and research communities</span>
+            </a>
+            <a href="https://rmblcomputehub.org" target="_blank" rel="noopener">
+              RMBL Compute Hub
+              <span class="desc">JupyterHub environment for geospatial analysis</span>
+            </a>
+          </div>
+        </div>
+      </nav>
+    </div>
     <div id="app">
       <aside id="panel">
         <div id="sidebarResize" title="Drag to resize sidebar"></div>
-        <h1>
-          <a href="https://rmbl.org" target="_blank" rel="noopener">
-            <img src="./rmbl-logo.png" alt="RMBL" />
-          </a>
-          <span>SDP Browser <span style="font-size:10px;color:var(--muted);font-weight:400;">v0.1</span></span>
-        </h1>
         <div class="subtitle">Find and Explore Geospatial Data from the Spatial Data Platform</div>
 
         <h2>Catalog <span class="count" id="catStatus"></span></h2>
@@ -3382,6 +3456,18 @@ message("Saved to ${outName}")
 
       // ---------- sidebar collapse + resize ----------
       // ---------- welcome modal (first visit only) ----------
+      // ---------- top bar dropdown ----------
+      document.querySelectorAll("[data-toggle]").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const dd = document.getElementById(btn.dataset.toggle);
+          dd.classList.toggle("open");
+        });
+      });
+      document.addEventListener("click", () => {
+        document.querySelectorAll(".nav-dropdown.open").forEach((d) => d.classList.remove("open"));
+      });
+
       if (!localStorage.getItem("sdp-welcome-seen")) {
         document.getElementById("welcomeModal").hidden = false;
       }
