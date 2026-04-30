@@ -93,11 +93,35 @@ terraform apply                                    # full stack
 
 This creates: VPC, NAT, ALB (locked to CloudFront prefix list), ECS Fargate service, CloudFront distributions (API + site), WAF, S3 site bucket, OIDC deploy role.
 
-### Deploy the static site
+### Day-to-day deploys
 
-Generate `config.js` from Terraform outputs and sync to S3:
+Use the deploy script at the repo root — it handles syncing prototype → app (with config.js shim), building + pushing the TiTiler image, Terraform apply, ECS restart, S3 sync, and CloudFront invalidation.
 
 ```bash
+# Full deploy: image + infra + site
+./scripts/deploy-staging.sh
+
+# Site-only (frontend changes, no image rebuild)
+./scripts/deploy-staging.sh site
+
+# Image-only (TiTiler changes, no site sync)
+./scripts/deploy-staging.sh image
+```
+
+The script:
+1. Copies `prototype/web/` → `app/web/` and applies the `config.js` shim automatically.
+2. Builds the TiTiler image for `linux/amd64` (cross-compiles on ARM Macs), pushes to ECR with a timestamped tag.
+3. Runs `terraform apply` to update the ECS task definition.
+4. Forces a new ECS deployment and waits for stability (~2-3 min).
+5. Writes `config.js` with the production API domain and syncs `app/web/` to S3.
+6. Invalidates both CloudFront distributions.
+
+### Manual site deploy (without the script)
+
+If you only need to push frontend changes:
+
+```bash
+cd infra/envs/staging
 API_DOMAIN="$(terraform output -raw api_distribution_domain)"
 SITE_BUCKET="$(terraform output -raw site_bucket_name)"
 SITE_DIST="$(terraform output -raw site_distribution_id)"
