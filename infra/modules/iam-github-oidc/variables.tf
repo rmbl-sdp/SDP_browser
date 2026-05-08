@@ -38,3 +38,21 @@ variable "cloudfront_distribution_arns" {
   type    = list(string)
   default = []
 }
+
+variable "tfstate_bucket" {
+  description = "Name of the S3 bucket holding the remote Terraform state. Empty = skip the policy statement (no perms granted)."
+  type        = string
+  default     = ""
+}
+
+variable "tfstate_key_prefix" {
+  description = "Object key prefix within tfstate_bucket this role may access (e.g. \"envs/staging/\"). Required when tfstate_bucket is set."
+  type        = string
+  default     = ""
+}
+
+variable "tflock_table" {
+  description = "Name of the DynamoDB table used for state locking. Empty = skip."
+  type        = string
+  default     = ""
+}

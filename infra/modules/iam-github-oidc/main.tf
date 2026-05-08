@@ -106,6 +106,37 @@ locals {
       ]
       Resource = var.cloudfront_distribution_arns
     }] : [],
+    length(var.tfstate_bucket) > 0 ? [{
+      Sid    = "TfStateObject"
+      Effect = "Allow"
+      Action = [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+      ]
+      Resource = "arn:aws:s3:::${var.tfstate_bucket}/${var.tfstate_key_prefix}*"
+    }] : [],
+    length(var.tfstate_bucket) > 0 ? [{
+      Sid      = "TfStateList"
+      Effect   = "Allow"
+      Action   = "s3:ListBucket"
+      Resource = "arn:aws:s3:::${var.tfstate_bucket}"
+      Condition = {
+        StringLike = {
+          "s3:prefix" = ["${var.tfstate_key_prefix}*"]
+        }
+      }
+    }] : [],
+    length(var.tflock_table) > 0 ? [{
+      Sid    = "TfLock"
+      Effect = "Allow"
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:DeleteItem",
+      ]
+      Resource = "arn:aws:dynamodb:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.tflock_table}"
+    }] : [],
   )
 }
 

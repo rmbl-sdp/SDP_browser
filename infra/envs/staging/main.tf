@@ -128,4 +128,8 @@ module "github_oidc" {
   ecs_service_arns             = [module.ecs_titiler.service_arn]
   site_bucket_arns             = [module.cloudfront_site.bucket_arn]
   cloudfront_distribution_arns = [module.cloudfront_api.distribution_arn, module.cloudfront_site.distribution_arn]
+  # Backend state access — keep these in sync with backend.tf.
+  tfstate_bucket     = "sdp-browser-tf-state"
+  tfstate_key_prefix = "envs/staging/"
+  tflock_table       = "sdp-browser-tf-locks"
 }
