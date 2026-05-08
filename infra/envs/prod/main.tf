@@ -115,10 +115,13 @@ module "cloudfront_site" {
 }
 
 module "github_oidc" {
-  source                       = "../../modules/iam-github-oidc"
-  name_prefix                  = var.name_prefix
-  github_repo                  = var.github_repo
-  allowed_refs                 = ["ref:refs/tags/v*"]
+  source      = "../../modules/iam-github-oidc"
+  name_prefix = var.name_prefix
+  github_repo = var.github_repo
+  # The deploy job sets `environment: prod`, which makes GitHub override the
+  # OIDC sub claim from "ref:refs/tags/v*" to "environment:prod". Allow both
+  # so the role works whether or not a job opts into a GH environment.
+  allowed_refs                 = ["ref:refs/tags/v*", "environment:prod"]
   create_oidc_provider         = false
   ecr_repository_arns          = [module.ecr_titiler.repository_arn]
   ecs_service_arns             = [module.ecs_titiler.service_arn]

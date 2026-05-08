@@ -114,10 +114,13 @@ module "cloudfront_site" {
 }
 
 module "github_oidc" {
-  source                       = "../../modules/iam-github-oidc"
-  name_prefix                  = var.name_prefix
-  github_repo                  = var.github_repo
-  allowed_refs                 = ["ref:refs/heads/main"]
+  source      = "../../modules/iam-github-oidc"
+  name_prefix = var.name_prefix
+  github_repo = var.github_repo
+  # The deploy job sets `environment: staging`, which makes GitHub override the
+  # OIDC sub claim from "ref:refs/heads/main" to "environment:staging". Allow
+  # both so the role works for env-gated jobs and any future ref-only workflows.
+  allowed_refs                 = ["ref:refs/heads/main", "environment:staging"]
   create_oidc_provider         = false
   ecr_repository_arns          = [module.ecr_titiler.repository_arn]
   ecs_service_arns             = [module.ecs_titiler.service_arn]
