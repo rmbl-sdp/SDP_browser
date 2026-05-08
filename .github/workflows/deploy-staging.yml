@@ -62,6 +62,11 @@ jobs:
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
+      # The default docker driver doesn't support cache-to/cache-from exporters;
+      # buildx with the docker-container driver does.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build + push TiTiler image
         uses: docker/build-push-action@v6
         with:
