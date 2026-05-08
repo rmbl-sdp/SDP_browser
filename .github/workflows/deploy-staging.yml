@@ -40,10 +40,12 @@ jobs:
           terraform_version: "1.9.8"
           terraform_wrapper: false
 
-      # Read-only init so we can resolve the ECR repo URL from outputs.
+      # backend.tf and the AWS provider both pin to the local "sdp-browser-admin"
+      # profile; under OIDC the runner has no shared config, so override both
+      # with empty strings to fall back to env var credentials.
       - name: terraform init
         working-directory: ${{ env.ENV_DIR }}
-        run: terraform init
+        run: terraform init -backend-config="profile="
 
       - name: Read ECR repository URL
         id: ecr_url
@@ -53,6 +55,7 @@ jobs:
           if [ -z "$url" ]; then
             echo "::notice::ECR repo not yet created; applying before first push."
             terraform apply -auto-approve \
+              -var "aws_profile=" \
               -var "container_image_tag=bootstrap" \
               -target=module.ecr_titiler
             url="$(terraform output -raw ecr_repository_url)"
@@ -74,6 +77,7 @@ jobs:
         working-directory: ${{ env.ENV_DIR }}
         run: |
           terraform apply -auto-approve \
+            -var "aws_profile=" \
             -var "container_image_tag=${{ steps.tag.outputs.tag }}"
 
       - name: Capture Terraform outputs

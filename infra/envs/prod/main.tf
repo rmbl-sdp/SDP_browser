@@ -10,8 +10,9 @@ terraform {
 }
 
 provider "aws" {
-  region  = var.aws_region
-  profile = var.aws_profile
+  region = var.aws_region
+  # Empty under GitHub Actions OIDC (creds come from env vars instead).
+  profile = var.aws_profile != "" ? var.aws_profile : null
   default_tags {
     tags = {
       Project     = "sdp-browser"
@@ -24,9 +25,10 @@ provider "aws" {
 # WAF web ACLs for CloudFront scope must live in us-east-1.
 # All compute (ECS, ALB, ECR, S3) stays in us-east-2 for same-region S3 access.
 provider "aws" {
-  alias   = "us_east_1"
-  region  = "us-east-1"
-  profile = var.aws_profile
+  alias  = "us_east_1"
+  region = "us-east-1"
+  # Empty under GitHub Actions OIDC (creds come from env vars instead).
+  profile = var.aws_profile != "" ? var.aws_profile : null
   default_tags {
     tags = {
       Project     = "sdp-browser"
