@@ -107,6 +107,9 @@ jobs:
             TITILER: "https://${{ steps.tf.outputs.api_domain }}",
             STAC_ROOT: "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json",
             SITES_QUERY_URL: "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026_Public_View/FeatureServer/14/query",
+            AGOL_CLIENT_ID: "73IpknmLfeXEBLAf",
+            AGOL_PRIVATE_SITES_URL: "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026/FeatureServer/14",
+            AGOL_RESEARCHER_FIELD: "Researcher",
           };
           EOF
 

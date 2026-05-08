@@ -74,9 +74,14 @@
         display: flex; align-items: center; gap: 8px;
         text-decoration: none; color: var(--text);
       }
-      #topbar .brand img { height: 22px; width: auto; }
-      #topbar .brand span { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
-      #topbar .brand .ver { font-size: 10px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+      #topbar .brand img { height: 24px; width: auto; }
+      .brand-text { display: flex; flex-direction: column; line-height: 1.2; }
+      .brand-title { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+      .brand-title .ver { font-size: 10px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+      .sidebar-sub {
+        font-size: 12px; color: var(--muted); font-weight: 400;
+        padding: 10px 12px 0; line-height: 1.4;
+      }
       #topbar nav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
       #topbar nav a, #topbar nav .nav-btn {
         color: var(--fg-2); font-size: 13px; font-weight: 500;
@@ -518,7 +523,9 @@
         font-weight: 600;
       }
 
-      /* Map overlay control: labels / roads toggle */
+      /* Map overlay control: labels / roads toggle.
+         Single-line layout — when content exceeds available map width, use the
+         ▾ rail on the left to collapse the panel rather than wrapping. */
       #mapCtls {
         position: absolute; top: 10px; left: 10px;
         z-index: 10;
@@ -527,17 +534,52 @@
         border-radius: var(--r-md);
         padding: 4px 8px;
         font-size: 11px; color: var(--text);
-        display: flex; align-items: center; gap: 6px;
+        display: flex; align-items: center; gap: 4px;
         user-select: none;
         box-shadow: 0 2px 8px rgba(0,0,0,0.35);
-      }
-      #mapCtls {
-        flex-wrap: wrap;
       }
       #mapCtls label {
         display: flex; align-items: center; gap: 4px;
         margin: 0; cursor: pointer; color: var(--text); font-size: 11px;
       }
+      .mapCtls-body { display: contents; }
+      #mapCtls.collapsed .mapCtls-body { display: none; }
+      .mapCtls-min {
+        background: none; border: none; color: var(--muted);
+        font: 12px/1 inherit;
+        cursor: pointer; padding: 0;
+        flex: 0 0 14px;
+        align-self: stretch;
+        display: flex; align-items: center; justify-content: center;
+        border-right: 1px solid var(--border);
+        margin: -4px 0 -4px -8px;
+      }
+      .mapCtls-min:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+      #mapCtls.collapsed .mapCtls-min {
+        border-right: none; margin: -4px -8px;
+      }
+      .my-sites-group {
+        display: inline-flex; align-items: center; gap: 2px;
+        padding-left: 4px; margin-left: 0;
+        border-left: 1px solid var(--border);
+      }
+      .my-sites-group > label,
+      .my-sites-group .link-btn { white-space: nowrap; flex: 0 0 auto; }
+      .my-sites-group label input[disabled] + * { color: var(--muted); }
+      .link-btn {
+        /* Override the global button {} rule (orange bg, full-width, big padding). */
+        background: none; border: none; padding: 1px 4px; width: auto;
+        border-radius: 0; font-weight: normal; line-height: 1;
+        color: var(--accent); font-size: 11px; cursor: pointer;
+        font-family: inherit; text-decoration: underline;
+      }
+      .link-btn:hover { color: var(--text); background: none; }
+      #researcherFilter {
+        background: var(--bg-elev-1); color: var(--text);
+        border: 1px solid var(--border); border-radius: var(--r-sm);
+        font-size: 11px; padding: 1px 4px; max-width: 180px;
+      }
+      .muted-mini { color: var(--muted); font-size: 10px; }
       .maplibregl-popup-content {
         background: var(--bg-elev-1) !important;
         color: var(--text) !important;
@@ -879,7 +921,9 @@
     <div id="topbar">
       <a class="brand" href="https://rmbl.org" target="_blank" rel="noopener">
         <img src="./rmbl-logo.png" alt="RMBL" />
-        <span>SDP Browser<span class="ver">v0.1</span></span>
+        <div class="brand-text">
+          <span class="brand-title">SDP Browser<span class="ver">v0.1</span></span>
+        </div>
       </a>
       <nav>
         <a href="https://www.rmbl.org/scientists/resources/spatial-data-platform/" target="_blank" rel="noopener">About</a>
@@ -901,21 +945,14 @@
     <div id="app">
       <aside id="panel">
         <div id="sidebarResize" title="Drag to resize sidebar"></div>
-        <h1>
-          <a href="https://rmbl.org" target="_blank" rel="noopener">
-            <img src="./rmbl-logo.png" alt="RMBL" />
-          </a>
-          <span>SDP Browser <span style="font-size:10px;color:var(--muted);font-weight:400;">v0.1</span></span>
-        </h1>
-        <div class="subtitle">Find and Explore Geospatial Data from the Spatial Data Platform</div>
+        <div class="sidebar-sub">Find and Explore Geospatial Data from the Spatial Data Platform</div>
 
-        <h2>Catalog <span class="count" id="catStatus"></span></h2>
+        <h2 style="display:flex;align-items:baseline;gap:6px;">Catalog <span class="count" id="catStatus"></span><a id="catalogRefresh" href="#" style="color:var(--accent);font-size:12px;font-weight:400;display:none;margin-left:auto;">refresh</a></h2>
         <button id="discoverBtn" class="secondary" style="display: flex; align-items: center; gap: 6px; justify-content: center;">
           <span>🔍</span><span>Discover layers</span>
         </button>
         <div id="catalogHint" class="hint" style="margin-top: 6px;">
           <span id="catalogHintText">Loading catalog…</span>
-          <a id="catalogRefresh" href="#" style="color: var(--accent); margin-left: 6px; display: none;">refresh</a>
         </div>
 
         <h2>Active layers <span class="count" id="actCount"></span></h2>
@@ -956,9 +993,23 @@
       </aside>
       <div id="map">
         <div id="mapCtls">
-          <label><input type="checkbox" id="refToggle" checked /> Labels &amp; roads</label>
-          <label><input type="checkbox" id="sitesToggle" /> Research sites</label>
-          <span id="sitesStatus" style="color: var(--muted); font-size: 10px;"></span>
+          <button id="mapCtlsToggle" type="button" class="mapCtls-min"
+                  title="Hide controls" aria-label="Hide controls">‹</button>
+          <span class="mapCtls-body">
+            <label><input type="checkbox" id="refToggle" checked /> Labels &amp; roads</label>
+            <label><input type="checkbox" id="sitesToggle" /> RMBL Research Sites</label>
+            <span id="sitesStatus" style="color: var(--muted); font-size: 10px;"></span>
+            <span id="mySitesGroup" class="my-sites-group"
+              ><label><input type="checkbox" id="mySitesToggle" disabled />My Research Sites</label
+              ><button type="button" id="agolSignInBtn" class="link-btn">Sign in with ArcGIS</button
+              ><span id="agolSignedInBlock" hidden
+                ><select id="researcherFilter" title="Filter by researcher"><option value="">All researchers</option></select
+                ><span id="agolUser" class="muted-mini"></span
+                ><button type="button" id="agolSignOutBtn" class="link-btn">Sign out</button
+              ></span
+              ><span id="mySitesStatus" style="color: var(--muted); font-size: 10px;"></span
+            ></span>
+          </span>
         </div>
         <div id="mapLegend" class="empty"></div>
       </div>
@@ -1016,11 +1067,20 @@
     <script src="./config.js"></script>
     <script type="module">
       import { loadRepo, makeInMemoryRepo, stacBrowserLink, invalidateCache, resolveTimeseriesUrl, formatDateLabel } from "./js/catalog-static.js";
+      import { signIn, getStoredToken, clearToken } from "./js/agol-auth.js";
+      import { fetchPrivateSites, fetchDistinctValues, buildWhereForValue } from "./js/sites-private.js";
 
       const SDP_CONFIG = (typeof window !== "undefined" && window.__SDP_CONFIG__) || {};
       const STAC_ROOT = SDP_CONFIG.STAC_ROOT || "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json";
 
       const TITILER = SDP_CONFIG.TITILER || "http://localhost:8000";
+
+      // Authenticated ResearchSites overlay (AGOL OAuth 2.0 / PKCE).
+      // Override any of these via window.__SDP_CONFIG__ in app/web/config.js.
+      const AGOL_CLIENT_ID = SDP_CONFIG.AGOL_CLIENT_ID || "73IpknmLfeXEBLAf";
+      const AGOL_PRIVATE_SITES_URL = SDP_CONFIG.AGOL_PRIVATE_SITES_URL
+        || "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026/FeatureServer/14";
+      const AGOL_RESEARCHER_FIELD = SDP_CONFIG.AGOL_RESEARCHER_FIELD || "Researcher";
       const SINGLEBAND_CMAPS = [
         "viridis","magma","inferno","cividis","terrain",
         "rdbu","rdbu_r","spectral","greys","ylgnbu",
@@ -1045,6 +1105,11 @@
         referenceOn: true,
         sitesOn: false,
         sitesData: null, // cached FeatureCollection once loaded
+        mySitesOn: false,
+        mySitesData: null,
+        agolToken: null,
+        myResearcher: "", // "" means show all
+        myResearcherChoices: null,
       };
       let nextUid = 1;
       let dragUid = null;
@@ -1360,6 +1425,7 @@
           if (map.getLayer(s.id)) map.moveLayer(s.id);
         });
         ensureSitesOnTop();
+        ensureMySitesOnTop();
       }
 
       // -------- RMBL research sites (classic ArcGIS FeatureServer) --------
@@ -1525,6 +1591,78 @@
       }
       function setSitesVisibility(on) {
         ["sites-fill", "sites-line", "sites-point"].forEach((id) => {
+          if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+        });
+      }
+
+      // -------- Authenticated "My research sites" layer (AGOL token) --------
+      const MY_SITES_COLOR = "#3CCDF5"; // cyan, distinct from public-overlay orange
+      const MY_LAYER_IDS = ["my-sites-fill", "my-sites-line", "my-sites-point"];
+
+      function ensureMySitesLayers() {
+        if (map.getSource("my-sites")) return;
+        map.addSource("my-sites", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addLayer({
+          id: "my-sites-fill", type: "fill", source: "my-sites",
+          filter: ["==", ["geometry-type"], "Polygon"],
+          paint: { "fill-color": MY_SITES_COLOR, "fill-opacity": 0.18 },
+          layout: { visibility: state.mySitesOn ? "visible" : "none" },
+        });
+        map.addLayer({
+          id: "my-sites-line", type: "line", source: "my-sites",
+          filter: ["!=", ["geometry-type"], "Point"],
+          paint: { "line-color": MY_SITES_COLOR, "line-width": 2, "line-dasharray": [2, 1.5] },
+          layout: { visibility: state.mySitesOn ? "visible" : "none" },
+        });
+        map.addLayer({
+          id: "my-sites-point", type: "circle", source: "my-sites",
+          filter: ["==", ["geometry-type"], "Point"],
+          paint: {
+            "circle-radius": 5,
+            "circle-color": MY_SITES_COLOR,
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 1.5,
+          },
+          layout: { visibility: state.mySitesOn ? "visible" : "none" },
+        });
+        // Same popup behavior as public sites.
+        MY_LAYER_IDS.forEach((id) => {
+          map.on("click", id, (e) => {
+            const f = e.features?.[0]; if (!f) return;
+            const props = f.properties || {};
+            const name =
+              props.name || props.NAME || props.Name ||
+              props.site_name || props.SiteName || "Research site";
+            const rows = Object.entries(props)
+              .filter(([k, v]) => v != null && v !== "" && k.toLowerCase() !== "name")
+              .slice(0, 10)
+              .map(([k, v]) => `<dt>${k}</dt><dd>${String(v)}</dd>`).join("");
+            const html =
+              `<div class="site-popup">
+                 <h4>${name}</h4>
+                 <dl>${rows}</dl>
+                 <button class="popup-aoi">Use bounding box as AOI</button>
+               </div>`;
+            const popup = new maplibregl.Popup({ closeOnClick: true })
+              .setLngLat(e.lngLat).setHTML(html).addTo(map);
+            const btn = popup.getElement()?.querySelector(".popup-aoi");
+            btn?.addEventListener("click", () => {
+              useFeatureAsAoi(f, [e.lngLat.lng, e.lngLat.lat]);
+              popup.remove();
+            });
+          });
+          map.on("mouseenter", id, () => (map.getCanvas().style.cursor = "pointer"));
+          map.on("mouseleave", id, () => (map.getCanvas().style.cursor = ""));
+        });
+      }
+      function ensureMySitesOnTop() {
+        MY_LAYER_IDS.forEach((id) => { if (map.getLayer(id)) map.moveLayer(id); });
+      }
+      function setMySitesVisibility(on) {
+        MY_LAYER_IDS.forEach((id) => {
           if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
         });
       }
@@ -2391,6 +2529,13 @@
         const isTs = item.kind === "timeseries";
         const isMb = item.kind === "multiband" || (item.bands && item.default_mode);
         const isRgbLike = item.kind === "rgb" || lyr.mode === "rgb";
+        // Multispectral imagery only — Natural/IR-False presets assume Blue/Green/
+        // Red/NIR/(Red Edge) band order and reflectance scaling. Lidar metrics
+        // and other 6+ band float products don't fit, so gate strictly.
+        const isMultispectral =
+          isMb &&
+          (item.bands?.length === 4 || item.bands?.length === 5) &&
+          typeof item.scale === "number";
         const cmapGradient = (name) => `linear-gradient(to right, ${(COLORMAPS[name] || COLORMAPS.viridis).join(",")})`;
         const cmapPickerHTML = isRgbLike
           ? `<div class="cmap-picker-btn" disabled style="background:#333942;">(RGB composite)<span class="chev"></span></div>`
@@ -2412,7 +2557,7 @@
         if (isMb) {
           if (lyr.mode === "rgb") {
             const [r, g, b] = lyr.bidx || item.default_bidx || [1, 2, 3];
-            const presets = item.bands && item.bands.length >= 5 ? `
+            const presets = isMultispectral ? `
               <label>Presets</label>
               <div class="dl-row">
                 <button data-k="presetNatural" class="dl-btn" style="font-size:10px;">Natural Color</button>
@@ -2442,7 +2587,7 @@
         }
 
         // Top-level quick controls: presets for multiband, colormap for singleband.
-        const hasPresets = isMb && lyr.mode === "rgb" && item.bands?.length >= 5;
+        const hasPresets = isMultispectral && lyr.mode === "rgb";
         const presetsBlock = hasPresets ? `
           <div class="dl-row">
             <button data-k="presetNatural" class="dl-btn" style="font-size:10px;">Natural Color</button>
@@ -3420,6 +3565,7 @@ message("Saved to ${outName}")
         }
         setSitesVisibility(state.sitesOn);
         ensureSitesOnTop();
+        ensureMySitesOnTop();
         setTimeout(() => {
           if (state.sitesOn) status.textContent =
             state.sitesData ? `${state.sitesData.features?.length ?? 0} sites` : "";
@@ -3436,6 +3582,157 @@ message("Saved to ${outName}")
           }
         });
       });
+
+      // -------- mapCtls collapse/expand --------
+      (() => {
+        const ctls = document.getElementById("mapCtls");
+        const minBtn = document.getElementById("mapCtlsToggle");
+        const KEY = "sdp-mapctls-collapsed";
+        const apply = (on) => {
+          ctls.classList.toggle("collapsed", on);
+          minBtn.textContent = on ? "›" : "‹";
+          minBtn.title = on ? "Show map controls" : "Hide map controls";
+          minBtn.setAttribute("aria-label", minBtn.title);
+        };
+        let initial = false;
+        try { initial = localStorage.getItem(KEY) === "1"; } catch {}
+        apply(initial);
+        minBtn.addEventListener("click", () => {
+          const next = !ctls.classList.contains("collapsed");
+          apply(next);
+          try { localStorage.setItem(KEY, next ? "1" : "0"); } catch {}
+        });
+      })();
+
+      // -------- AGOL sign-in / "my research sites" wiring --------
+      const myToggle = document.getElementById("mySitesToggle");
+      const mySignIn = document.getElementById("agolSignInBtn");
+      const mySignOut = document.getElementById("agolSignOutBtn");
+      const myFilter = document.getElementById("researcherFilter");
+      const myStatus = document.getElementById("mySitesStatus");
+      const myUserLbl = document.getElementById("agolUser");
+      const mySignedBlock = document.getElementById("agolSignedInBlock");
+
+      function setMyAuthUI(tok) {
+        const signedIn = !!tok;
+        mySignIn.hidden = signedIn;
+        mySignedBlock.hidden = !signedIn;
+        myToggle.disabled = !signedIn;
+        myUserLbl.textContent = signedIn && tok.username ? tok.username : "";
+        if (!signedIn) {
+          myToggle.checked = false;
+          state.mySitesOn = false;
+          state.mySitesData = null;
+          state.myResearcherChoices = null;
+          if (map.getSource("my-sites")) {
+            map.getSource("my-sites").setData({ type: "FeatureCollection", features: [] });
+          }
+          setMySitesVisibility(false);
+          myFilter.innerHTML = '<option value="">All researchers</option>';
+          myStatus.textContent = "";
+        }
+      }
+
+      async function populateResearcherChoices() {
+        if (state.myResearcherChoices || !state.agolToken) return;
+        try {
+          const vals = await fetchDistinctValues(
+            AGOL_PRIVATE_SITES_URL,
+            state.agolToken.access_token,
+            AGOL_RESEARCHER_FIELD,
+          );
+          state.myResearcherChoices = vals;
+          myFilter.innerHTML =
+            '<option value="">All researchers</option>' +
+            vals.map((v) => {
+              const safe = v.replace(/"/g, "&quot;").replace(/</g, "&lt;");
+              return `<option value="${safe}">${safe}</option>`;
+            }).join("");
+        } catch (err) {
+          console.warn("researcher list load failed", err);
+        }
+      }
+
+      async function loadMySites() {
+        if (!state.agolToken) return;
+        myStatus.textContent = "loading…";
+        const where = buildWhereForValue(AGOL_RESEARCHER_FIELD, state.myResearcher);
+        try {
+          const fc = await fetchPrivateSites(
+            AGOL_PRIVATE_SITES_URL,
+            state.agolToken.access_token,
+            where,
+          );
+          state.mySitesData = fc;
+          map.getSource("my-sites").setData(fc);
+          myStatus.textContent = `${fc.features?.length ?? 0} sites`;
+        } catch (err) {
+          console.error("private sites load failed", err);
+          myStatus.textContent = "error";
+          // 498/499 = bad/expired token — drop creds and prompt re-sign-in.
+          if (/\b(498|499|token)\b/i.test(String(err?.message || ""))) {
+            clearToken();
+            state.agolToken = null;
+            setMyAuthUI(null);
+          }
+        }
+      }
+
+      mySignIn.addEventListener("click", async () => {
+        try {
+          mySignIn.disabled = true;
+          const redirectUri = `${window.location.origin}/oauth-callback.html`;
+          const tok = await signIn({ clientId: AGOL_CLIENT_ID, redirectUri });
+          state.agolToken = tok;
+          setMyAuthUI(tok);
+          await populateResearcherChoices();
+          // Auto-enable the layer on first sign-in for less click friction.
+          myToggle.checked = true;
+          state.mySitesOn = true;
+          ensureMySitesLayers();
+          await loadMySites();
+          setMySitesVisibility(true);
+          ensureMySitesOnTop();
+        } catch (err) {
+          console.error("AGOL sign-in failed", err);
+          myStatus.textContent = `sign-in failed: ${err.message || err}`;
+        } finally {
+          mySignIn.disabled = false;
+        }
+      });
+
+      mySignOut.addEventListener("click", () => {
+        clearToken();
+        state.agolToken = null;
+        setMyAuthUI(null);
+      });
+
+      myToggle.addEventListener("change", async (e) => {
+        state.mySitesOn = e.target.checked;
+        ensureMySitesLayers();
+        if (state.mySitesOn && !state.mySitesData) {
+          await loadMySites();
+        }
+        setMySitesVisibility(state.mySitesOn);
+        ensureMySitesOnTop();
+      });
+
+      myFilter.addEventListener("change", async (e) => {
+        state.myResearcher = e.target.value;
+        state.mySitesData = null; // refetch with new where clause
+        if (state.mySitesOn) await loadMySites();
+      });
+
+      // On load, restore prior sign-in if the session token is still valid.
+      // We do not auto-load the layer; the user must tick the checkbox.
+      (() => {
+        const tok = getStoredToken();
+        if (tok) {
+          state.agolToken = tok;
+          setMyAuthUI(tok);
+          populateResearcherChoices();
+        }
+      })();
 
       async function loadCatalog() {
         updateCatalogStatus();

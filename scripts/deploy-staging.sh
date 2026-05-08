@@ -22,6 +22,9 @@ SITE_BUCKET="sdp-browser-staging-site"
 SITE_DIST="E39430E8ZWZD89"
 API_DIST="E317KMYYHDLK45"
 API_DOMAIN="api.sdpbrowser.org"
+AGOL_CLIENT_ID="73IpknmLfeXEBLAf"
+AGOL_PRIVATE_SITES_URL="https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026/FeatureServer/14"
+AGOL_RESEARCHER_FIELD="Researcher"
 TF_DIR="infra/envs/staging"
 MODE="${1:-full}"
 
@@ -34,8 +37,11 @@ if [[ "$MODE" == "full" || "$MODE" == "site" ]]; then
   echo "→ Syncing prototype/web → app/web..."
   cp prototype/web/js/catalog-static.js app/web/js/catalog-static.js
   cp prototype/web/js/idb.js app/web/js/idb.js
+  cp prototype/web/js/agol-auth.js app/web/js/agol-auth.js
+  cp prototype/web/js/sites-private.js app/web/js/sites-private.js
   cp prototype/web/catalog.json app/web/catalog.json
   cp prototype/web/rmbl-logo.png app/web/rmbl-logo.png
+  cp prototype/web/oauth-callback.html app/web/oauth-callback.html
 
   # Copy index.html then re-apply the config.js shim.
   cp prototype/web/index.html app/web/index.html
@@ -69,6 +75,27 @@ html = html.replace(
 html = re.sub(
     r'const SITES_QUERY_URL =\n\s+\"(https://services8[^\"]+)\";',
     r'const SITES_QUERY_URL = SDP_CONFIG.SITES_QUERY_URL\n        || \"\1\";',
+    html
+)
+
+# Wrap AGOL_CLIENT_ID
+html = re.sub(
+    r'const AGOL_CLIENT_ID = \"([^\"]+)\";',
+    r'const AGOL_CLIENT_ID = SDP_CONFIG.AGOL_CLIENT_ID || \"\1\";',
+    html
+)
+
+# Wrap AGOL_PRIVATE_SITES_URL (multi-line)
+html = re.sub(
+    r'const AGOL_PRIVATE_SITES_URL =\n\s+\"(https://services8[^\"]+)\";',
+    r'const AGOL_PRIVATE_SITES_URL = SDP_CONFIG.AGOL_PRIVATE_SITES_URL\n        || \"\1\";',
+    html
+)
+
+# Wrap AGOL_RESEARCHER_FIELD
+html = re.sub(
+    r'const AGOL_RESEARCHER_FIELD = \"([^\"]+)\";',
+    r'const AGOL_RESEARCHER_FIELD = SDP_CONFIG.AGOL_RESEARCHER_FIELD || \"\1\";',
     html
 )
 
@@ -115,6 +142,9 @@ window.__SDP_CONFIG__ = {
   TITILER: "https://$API_DOMAIN",
   STAC_ROOT: "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json",
   SITES_QUERY_URL: "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026_Public_View/FeatureServer/14/query",
+  AGOL_CLIENT_ID: "$AGOL_CLIENT_ID",
+  AGOL_PRIVATE_SITES_URL: "$AGOL_PRIVATE_SITES_URL",
+  AGOL_RESEARCHER_FIELD: "$AGOL_RESEARCHER_FIELD",
 };
 EOF
 

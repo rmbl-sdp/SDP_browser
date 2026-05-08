@@ -359,7 +359,11 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
       desc.kind = "singleband";
       desc.cog_url = asset?.href;
     }
-  } else if (bandCount >= 3 && dtype === "uint8") {
+  } else if (bandCount >= 3) {
+    // True-color uint8 (e.g. orthoimagery) and multi-band float/int (lidar
+    // metrics, multispectral) both render under "multiband" with the band-mode
+    // toggle. Default to RGB false-color of the first three bands; users can
+    // switch to single-band-with-colormap from the styling panel.
     desc.kind = "multiband";
     desc.cog_url = asset?.href;
     desc.bands = bands.map((b, i) => ({ idx: i + 1, name: b.name || b.description || `Band ${i + 1}` }));

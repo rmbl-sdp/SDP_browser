@@ -67,6 +67,7 @@ Expect the first tile of each layer to take 1–10 s: TiTiler is cold, GDAL is f
 ### Map overlays
 - **Labels & roads** — Esri World_Transportation + World_Boundaries_and_Places stacked above data layers.
 - **Research sites** — RMBL ArcGIS Online classic FeatureServer (layer 14); click a polygon to pop a dark-themed attribute panel plus the Use-as-AOI button.
+- **My research sites** *(authenticated)* — same layout but pulled from the non-public `ResearchSites_2026/FeatureServer/14` after the user signs in to ArcGIS Online via OAuth 2.0 (PKCE). A **Researcher** dropdown appears once signed in; selecting a value applies a server-side `where=Researcher='…'` filter. Drawn in cyan with a dashed outline so it's distinguishable from the public overlay when both are visible at once. See [§AGOL OAuth setup](#agol-oauth-setup) for one-time app registration.
 
 ### URL hash
 Everything worth sharing survives a reload:
@@ -141,12 +142,34 @@ prototype/
 
 - **`AWS_NO_SIGN_REQUEST=YES`** is set in `titiler/app.py`, so TiTiler reads `s3://rmbl-sdp` anonymously. For a private bucket, supply AWS credentials via the container environment and flip that off.
 
+### AGOL OAuth setup
+
+The "My research sites" overlay needs an ArcGIS Online application registered as a **Browser** app type. One-time setup:
+
+1. AGOL → **Content → New item → Application → Other application**.
+2. Open the item → **Settings → App Registration → Register app**.
+3. Set **App type: Browser**. (No client secret; PKCE is required for browser apps.)
+4. Add redirect URIs — exact match, including scheme + port + path:
+   - `http://localhost:8080/oauth-callback.html` (prototype + local app testing)
+   - `https://sdpbrowser.org/oauth-callback.html` (staging)
+   - *(prod domain when stood up)*
+5. Copy the **Client ID** and update:
+   - `prototype/web/index.html` → `AGOL_CLIENT_ID` constant (default for the prototype).
+   - `app/web/config.js` → `AGOL_CLIENT_ID` key (runtime override for the deployed app; `scripts/deploy-staging.sh` writes this from the `AGOL_CLIENT_ID` shell variable at the top).
+
+The frontend talks directly to `https://www.arcgis.com/sharing/rest/oauth2/{authorize,token}`; nothing on our side stores credentials. Tokens live in `sessionStorage` under `sdp_agol_token` and expire after AGOL's default (~2 h); when one expires the user just clicks **Sign in with ArcGIS** again.
+
+If you change the FeatureServer used for the authenticated overlay, update both `AGOL_PRIVATE_SITES_URL` and `AGOL_RESEARCHER_FIELD` (currently `Researcher`) in the same three places.
+
 ## Troubleshooting
 
 - **"Loading catalog…" never finishes.** Open devtools → Console. The walker logs `collection fetch failed: <url>` and `items failed in <url>` for any node it couldn't read. Fast-fail timeouts are 15 s per fetch. A partial walk still produces a usable catalog; the status line shows the final count.
 - **Some items are in the catalog but missing after a re-walk.** Most often (a) the collection's `data` asset points at a non-COG file, or (b) a 403 / 404 on the S3 path. Prior to the `v1` catalog cutover some items were serialized with bare `NaN` / `Infinity` tokens (not valid JSON) and that was the dominant cause; the walker no longer sanitises those, so any such regression will show up as `Unexpected token 'N'` parse errors in the console.
 - **Layers visualize as a flat colour.** The default stretch was off. Click the **auto** button next to Rescale to recompute from a 2nd–98th percentile of the COG.
 - **Research sites toggle shows `error`.** The ArcGIS Online item probably lost its public-sharing setting or the FeatureServer layer id changed. `SITES_QUERY_URL` in `web/index.html` hard-codes layer `14`.
+- **"Sign in with ArcGIS" pops up then immediately closes / shows "redirect_uri" error.** The redirect URI in the AGOL app registration must be an exact string match for `<origin>/oauth-callback.html`, including scheme + port. Localhost dev needs `http://localhost:8080/oauth-callback.html` registered.
+- **"Popup blocked".** Browser blocked the OAuth popup. Allow popups for the site and click sign-in again.
+- **"My research sites" loads then shows `error`.** Almost always token expiry mid-session — the handler clears the stored token and reverts to the signed-out UI; click sign-in again. If it persists, check the browser console for an HTTP 498/499 (token) or schema error (`Researcher` field renamed).
 - **Blank tiles / 500s from TiTiler.** Check `docker compose logs titiler`. Most common cause is a COG with no valid overviews; `rio cogeo validate <url>` in a local Python env will tell you.
 - **CORS errors** fetching the STAC or ArcGIS endpoints. Both are public today. If this regresses, the fix is a server-side proxy; we don't want to ship tokens into the client.
 

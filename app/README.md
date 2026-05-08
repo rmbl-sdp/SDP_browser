@@ -11,13 +11,17 @@ The static SPA that ships to S3 + CloudFront. Today it is a near-verbatim copy o
 
 ## Runtime config
 
-`web/index.html` pulls three values from `window.__SDP_CONFIG__`:
+`web/index.html` pulls these values from `window.__SDP_CONFIG__`:
 
 ```js
 window.__SDP_CONFIG__ = {
-  TITILER:         "https://<cloudfront-api>",             // tile server base URL
-  STAC_ROOT:       "https://…/stac/v1/catalog.json",
-  SITES_QUERY_URL: "https://services8.arcgis.com/…/FeatureServer/14/query",
+  TITILER:                "https://<cloudfront-api>",          // tile server base URL
+  STAC_ROOT:              "https://…/stac/v1/catalog.json",
+  SITES_QUERY_URL:        "https://services8.arcgis.com/…/FeatureServer/14/query",
+  // Authenticated "My research sites" overlay — see prototype/README.md §AGOL OAuth setup.
+  AGOL_CLIENT_ID:         "<browser-app-client-id>",
+  AGOL_PRIVATE_SITES_URL: "https://services8.arcgis.com/…/ResearchSites_2026/FeatureServer/14",
+  AGOL_RESEARCHER_FIELD:  "Researcher",
 };
 ```
 

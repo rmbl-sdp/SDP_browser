@@ -93,6 +93,9 @@ docker-compose.override.yml
 # ---------- Rendered doc artifacts (Quarto, etc.) ----------
 *.html
 *_files/
+# But the static SPA's hand-written HTML lives in tree:
+!prototype/web/*.html
+!app/web/*.html
 
 # ---------- Claude Code local cache ----------
 .claude/

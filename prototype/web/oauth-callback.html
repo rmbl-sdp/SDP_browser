@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SDP Browser — ArcGIS sign-in</title>
+<style>
+  body { font: 14px/1.4 -apple-system, system-ui, sans-serif; padding: 24px; color: #ddd;
+         background: #1a1a1a; }
+  .err { color: #f08080; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<p id="msg">Completing sign-in…</p>
+<script type="module">
+const PORTAL = "https://www.arcgis.com";
+const VERIFIER_KEY = "sdp_agol_verifier";
+const STATE_KEY = "sdp_agol_state";
+
+const msgEl = document.getElementById("msg");
+
+function postBack(payload) {
+  if (window.opener && !window.opener.closed) {
+    window.opener.postMessage({ source: "sdp-agol-callback", ...payload },
+                              window.location.origin);
+  }
+}
+
+function fail(err) {
+  msgEl.className = "err";
+  msgEl.textContent = `Sign-in failed: ${err}`;
+  postBack({ error: err });
+  setTimeout(() => window.close(), 4000);
+}
+
+(async () => {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  const state = params.get("state");
+  const oauthErr = params.get("error_description") || params.get("error");
+  if (oauthErr) { fail(oauthErr); return; }
+  if (!code) { fail("Missing authorization code"); return; }
+
+  const expectedState = sessionStorage.getItem(STATE_KEY);
+  if (!expectedState || state !== expectedState) {
+    fail("State mismatch — possible CSRF, aborting"); return;
+  }
+  const verifier = sessionStorage.getItem(VERIFIER_KEY);
+  if (!verifier) { fail("Missing PKCE verifier — sign in again"); return; }
+
+  // Initiator stashes clientId in sessionStorage; fall back to __SDP_CONFIG__
+  // for safety (works if the popup is opened cross-window via the same origin).
+  const clientId =
+    sessionStorage.getItem("sdp_agol_client") ||
+    (window.opener && window.opener.__SDP_CONFIG__ && window.opener.__SDP_CONFIG__.AGOL_CLIENT_ID) ||
+    (window.__SDP_CONFIG__ && window.__SDP_CONFIG__.AGOL_CLIENT_ID);
+  if (!clientId) { fail("AGOL_CLIENT_ID not configured"); return; }
+
+  const redirectUri = `${window.location.origin}/oauth-callback.html`;
+  const body = new URLSearchParams({
+    client_id: clientId,
+    code,
+    grant_type: "authorization_code",
+    redirect_uri: redirectUri,
+    code_verifier: verifier,
+    f: "json",
+  });
+
+  try {
+    const resp = await fetch(`${PORTAL}/sharing/rest/oauth2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      fail(data.error?.message || data.error_description || `HTTP ${resp.status}`);
+      return;
+    }
+    postBack({
+      access_token: data.access_token,
+      expires_in: data.expires_in,
+      username: data.username,
+    });
+    msgEl.textContent = "Signed in. You can close this window.";
+    setTimeout(() => window.close(), 400);
+  } catch (e) {
+    fail(e.message || String(e));
+  }
+})();
+</script>
+</body>
+</html>
