@@ -454,6 +454,7 @@
         font-size: 11px; color: var(--muted);
         margin-top: -4px; margin-bottom: 10px;
       }
+      .aoi-warn { color: var(--warn); }
 
       .dl-group-label {
         font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
@@ -963,8 +964,14 @@
         <div class="hint">Summaries &amp; subsets operate on the topmost visible layer.</div>
 
         <h3 class="sub">Define an Area of Interest</h3>
-        <div class="hint">Click <em>Draw an Area of Interest</em>, then drag on the map.</div>
-        <button id="aoiBtn" class="secondary">Draw an Area of Interest</button>
+        <div class="hint">Draw a bounding box on the map, or upload a GeoJSON file.</div>
+        <input type="file" id="aoiFile" accept=".geojson,.json,application/geo+json,application/json" hidden />
+        <div class="dl-row">
+          <button id="aoiBtn" class="dl-btn">Draw bbox</button>
+          <button id="aoiUploadBtn" class="dl-btn">Upload (GeoJSON)</button>
+        </div>
+        <div id="aoiUploadStatus" class="hint" style="margin-top: 6px;"></div>
+        <div id="aoiUploadWarn" class="hint aoi-warn" style="margin-top: 2px;" hidden></div>
 
         <h3 class="sub">AOI Summaries</h3>
         <div id="stats" hidden></div>
@@ -1064,6 +1071,8 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <!-- proj4js for AOI-upload reprojection from UTM 13N (canonical SDP CRS) to lon/lat. -->
+    <script src="https://unpkg.com/proj4@2.11.0/dist/proj4.js"></script>
     <script src="./config.js"></script>
     <script type="module">
       import { loadRepo, makeInMemoryRepo, stacBrowserLink, invalidateCache, resolveTimeseriesUrl, formatDateLabel } from "./js/catalog-static.js";
@@ -2804,13 +2813,13 @@
 
       function updateAoiBtn() {
         if (state.aoiArmed) {
-          aoiBtn.textContent = "Drag on map — click to cancel";
+          aoiBtn.textContent = "Drag map — cancel";
           aoiBtn.style.background = "#FF6138";
         } else if (state.aoi) {
-          aoiBtn.textContent = "Clear Area of Interest";
+          aoiBtn.textContent = "Clear AOI";
           aoiBtn.style.background = "";
         } else {
-          aoiBtn.textContent = "Draw an Area of Interest";
+          aoiBtn.textContent = "Draw bbox";
           aoiBtn.style.background = "";
         }
       }
@@ -2828,6 +2837,180 @@
         if (state.aoiArmed) { setArmed(false); return; }
         if (state.aoi) { setAoi(null); return; }
         setArmed(true);
+      });
+
+      // ---------- AOI upload (GeoJSON) ----------
+      // Minimal v1: parse a single GeoJSON Polygon/MultiPolygon and feed it
+      // through useFeatureAsAoi(), which collapses to a bbox. Extraction is
+      // still bbox-based — switching to /cog/feature for true polygon clips
+      // is the planned follow-up (see ROADMAP § Arbitrary-polygon AOI).
+      const aoiFileInput = document.getElementById("aoiFile");
+      const aoiUploadBtn = document.getElementById("aoiUploadBtn");
+      const aoiUploadStatus = document.getElementById("aoiUploadStatus");
+      const aoiUploadWarn = document.getElementById("aoiUploadWarn");
+      const AOI_FILE_MAX_BYTES = 5 * 1024 * 1024;
+      function resetAoiUploadMessages() {
+        aoiUploadStatus.textContent = "";
+        aoiUploadWarn.textContent = "";
+        aoiUploadWarn.hidden = true;
+      }
+
+      function isPolygonGeom(g) {
+        return !!g && (g.type === "Polygon" || g.type === "MultiPolygon");
+      }
+      function pickPolygonFeature(data) {
+        if (!data || typeof data !== "object") return { feature: null, extraPolys: 0 };
+        if (data.type === "Feature" && isPolygonGeom(data.geometry)) {
+          return { feature: data, extraPolys: 0 };
+        }
+        if (data.type === "FeatureCollection" && Array.isArray(data.features)) {
+          const polys = data.features.filter(
+            (f) => f && f.type === "Feature" && isPolygonGeom(f.geometry),
+          );
+          return { feature: polys[0] || null, extraPolys: Math.max(polys.length - 1, 0) };
+        }
+        if (isPolygonGeom(data)) {
+          return { feature: { type: "Feature", properties: {}, geometry: data }, extraPolys: 0 };
+        }
+        return { feature: null, extraPolys: 0 };
+      }
+
+      // proj4 (loaded as a global script tag) — preload the canonical SDP CRS.
+      if (typeof proj4 !== "undefined") {
+        proj4.defs("EPSG:32613", "+proj=utm +zone=13 +datum=WGS84 +units=m +no_defs");
+      }
+
+      // GMUG domain bbox (lon/lat) — the largest SDP domain, used as a coarse
+      // coverage check for uploaded AOIs. Padded ~0.05° beyond the real
+      // STAC-reported bounds.
+      const SDP_COVERAGE_BBOX = [-109.2, 37.65, -106.15, 39.55];
+      function bboxesIntersect(a, b) {
+        // [west, south, east, north]
+        return !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]);
+      }
+
+      // Extract first coord for CRS sniffing.
+      function firstCoord(geom) {
+        let out = null;
+        const walk = (c) => {
+          if (out) return;
+          if (typeof c[0] === "number" && typeof c[1] === "number") out = c;
+          else if (Array.isArray(c)) c.forEach(walk);
+        };
+        walk(geom.coordinates);
+        return out;
+      }
+      function isLngLat(x, y) {
+        return Math.abs(x) <= 180 && Math.abs(y) <= 90;
+      }
+      // Plausible UTM 13N coordinates for the SDP coverage area (western Colorado).
+      // UTM zones are nominally 200k–800k easting; SDP latitudes give northings in
+      // roughly the 3.7M–5.1M band. Slightly loose to avoid rejecting valid edge cases.
+      function isColoradoUtm13N(x, y) {
+        return x >= 150000 && x <= 850000 && y >= 3700000 && y <= 5100000;
+      }
+      // Parse the GeoJSON crs member. Returns "EPSG:32613" or "EPSG:4326" or null.
+      function detectDeclaredCrs(data) {
+        const name = data?.crs?.properties?.name;
+        if (typeof name !== "string") return null;
+        // Forms: "EPSG:32613", "urn:ogc:def:crs:EPSG::32613", "EPSG:4326", etc.
+        const m = name.match(/(?:EPSG[:]{1,2})(\d+)/i);
+        return m ? `EPSG:${m[1]}` : null;
+      }
+      function reprojectCoords(coords, transform) {
+        if (typeof coords[0] === "number" && typeof coords[1] === "number") {
+          const [x, y] = transform([coords[0], coords[1]]);
+          return coords.length > 2 ? [x, y, coords[2]] : [x, y];
+        }
+        return coords.map((c) => reprojectCoords(c, transform));
+      }
+      // Returns { feature, note } with feature in EPSG:4326, or { error } string.
+      function normalizeFeatureCrs(rawData, feature) {
+        const declared = detectDeclaredCrs(rawData);
+        const sample = firstCoord(feature.geometry);
+        if (!sample) return { error: "Geometry has no coordinates." };
+
+        if (declared === "EPSG:4326" || (declared == null && isLngLat(sample[0], sample[1]))) {
+          return { feature, note: null };
+        }
+        if (declared === "EPSG:32613" || (declared == null && isColoradoUtm13N(sample[0], sample[1]))) {
+          if (typeof proj4 === "undefined") {
+            return { error: "Reprojection library not loaded — refresh and retry." };
+          }
+          const transform = (xy) => proj4("EPSG:32613", "EPSG:4326", xy);
+          const reprojGeom = {
+            type: feature.geometry.type,
+            coordinates: reprojectCoords(feature.geometry.coordinates, transform),
+          };
+          return {
+            feature: { type: "Feature", properties: feature.properties || {}, geometry: reprojGeom },
+            note: "reprojected from UTM 13N",
+          };
+        }
+        if (declared) {
+          return { error: `CRS ${declared} not supported — reproject to EPSG:4326 (lon/lat) or EPSG:32613.` };
+        }
+        return {
+          error: "Coordinates look projected but aren't in the UTM 13N range for Colorado — reproject to EPSG:4326 and try again.",
+        };
+      }
+
+      aoiUploadBtn.addEventListener("click", () => aoiFileInput.click());
+
+      aoiFileInput.addEventListener("change", async (ev) => {
+        const file = ev.target.files?.[0];
+        ev.target.value = ""; // allow re-uploading the same filename later
+        if (!file) return;
+        resetAoiUploadMessages();
+
+        if (file.size > AOI_FILE_MAX_BYTES) {
+          aoiUploadStatus.textContent = "File too large (>5 MB).";
+          return;
+        }
+
+        let text;
+        try { text = await file.text(); }
+        catch { aoiUploadStatus.textContent = "Couldn't read file."; return; }
+
+        let data;
+        try { data = JSON.parse(text); }
+        catch { aoiUploadStatus.textContent = "Not valid JSON."; return; }
+
+        const { feature: rawFeature, extraPolys } = pickPolygonFeature(data);
+        if (!rawFeature) {
+          aoiUploadStatus.textContent = "No Polygon or MultiPolygon geometry found.";
+          return;
+        }
+
+        const normalized = normalizeFeatureCrs(data, rawFeature);
+        if (normalized.error) {
+          aoiUploadStatus.textContent = normalized.error;
+          return;
+        }
+        const feature = normalized.feature;
+
+        if (state.aoiArmed) setArmed(false);
+        useFeatureAsAoi(feature, null);
+
+        // Zoom to fit the uploaded AOI extent.
+        const b = coordsBBox(feature.geometry.coordinates);
+        if (b.every(isFinite)) {
+          map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 40, maxZoom: 14, duration: 600 });
+        }
+
+        const parts = ["bbox-clipped"];
+        if (normalized.note) parts.push(normalized.note);
+        const tag = ` (${parts.join(", ")})`;
+        const skipped = extraPolys > 0
+          ? ` — ignored ${extraPolys} other polygon${extraPolys === 1 ? "" : "s"}.`
+          : ".";
+        aoiUploadStatus.textContent = `Loaded "${file.name}"${tag}${skipped}`;
+
+        if (b.every(isFinite) && !bboxesIntersect(b, SDP_COVERAGE_BBOX)) {
+          aoiUploadWarn.textContent =
+            "Note: AOI is outside the SDP coverage area (GMUG domain). Statistics and extractions will return nodata.";
+          aoiUploadWarn.hidden = false;
+        }
       });
 
       map.on("mousedown", (e) => {
