@@ -41,6 +41,7 @@ if [[ "$MODE" == "full" || "$MODE" == "site" ]]; then
   cp prototype/web/js/sites-private.js app/web/js/sites-private.js
   cp prototype/web/catalog.json app/web/catalog.json
   cp prototype/web/rmbl-logo.png app/web/rmbl-logo.png
+  cp prototype/web/favicon.svg app/web/favicon.svg
   cp prototype/web/oauth-callback.html app/web/oauth-callback.html
 
   # Copy index.html then re-apply the config.js shim.
