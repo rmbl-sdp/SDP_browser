@@ -70,53 +70,48 @@
         flex: 0 0 auto;
         z-index: 60;
       }
-      #topbar .brand {
-        display: flex; align-items: center; gap: 8px;
-        text-decoration: none; color: var(--text);
+      /* Hub-and-spoke breadcrumb: [RMBL mark] | DATA HUB › SDP BROWSER. */
+      .rmbl-mark {
+        display: inline-flex; align-items: center; justify-content: center;
+        background: var(--accent); color: #fff;
+        font-weight: 700; font-size: 13px;
+        letter-spacing: 0.18em;
+        padding: 6px 11px;
+        border-radius: 2px; line-height: 1;
+        text-decoration: none;
+        font-family: var(--font-sans);
       }
-      #topbar .brand img { height: 24px; width: auto; }
-      .brand-text { display: flex; flex-direction: column; line-height: 1.2; }
-      .brand-title { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
-      .brand-title .ver { font-size: 10px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+      .rmbl-mark:hover { background: var(--accent-hover); }
+      .topbar-sep {
+        display: inline-block;
+        width: 1px; align-self: stretch;
+        background: var(--border);
+        margin: 8px 4px;
+      }
+      .topbar-parent, .topbar-current {
+        text-transform: uppercase;
+        font-size: 12px; letter-spacing: 0.14em; font-weight: 500;
+      }
+      .topbar-parent { color: var(--muted); text-decoration: none; }
+      .topbar-parent:hover { color: var(--text); }
+      .topbar-chev { color: var(--muted); font-size: 14px; margin: 0 2px; }
+      .topbar-current { color: var(--text); }
+      .topbar-current .ver {
+        text-transform: none; font-size: 10px; color: var(--muted);
+        letter-spacing: 0; margin-left: 6px; font-weight: 400;
+      }
       .sidebar-sub {
         font-size: 12px; color: var(--muted); font-weight: 400;
         padding: 10px 12px 0; line-height: 1.4;
       }
       #topbar nav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
-      #topbar nav a, #topbar nav .nav-btn {
+      #topbar nav a {
         color: var(--fg-2); font-size: 13px; font-weight: 500;
         text-decoration: none; padding: 6px 10px; border-radius: var(--r-md);
-        background: transparent; border: 0; cursor: pointer;
         font-family: var(--font-sans);
       }
-      #topbar nav a:hover, #topbar nav .nav-btn:hover {
+      #topbar nav a:hover {
         color: var(--text); background: rgba(244,238,228,0.06);
-      }
-      .nav-dropdown {
-        position: relative; display: inline-block;
-      }
-      .nav-dropdown-menu {
-        display: none;
-        position: absolute; right: 0; top: calc(100% + 4px);
-        background: var(--bg-elev-2);
-        border: 1px solid var(--border-strong);
-        border-radius: var(--r-lg);
-        box-shadow: var(--shadow-2);
-        min-width: 200px; padding: 4px;
-        z-index: 70;
-      }
-      .nav-dropdown.open .nav-dropdown-menu { display: block; }
-      .nav-dropdown-menu a {
-        display: block; padding: 8px 12px;
-        color: var(--fg-2); font-size: 13px;
-        text-decoration: none; border-radius: var(--r-md);
-      }
-      .nav-dropdown-menu a:hover {
-        color: var(--text); background: rgba(244,238,228,0.06);
-      }
-      .nav-dropdown-menu a .desc {
-        display: block; font-size: 11px; color: var(--muted);
-        margin-top: 2px;
       }
       :root { --sidebar-width: 340px; }
       #app {
@@ -920,27 +915,13 @@
   </head>
   <body>
     <div id="topbar">
-      <a class="brand" href="https://rmbl.org" target="_blank" rel="noopener">
-        <img src="./rmbl-logo.png" alt="RMBL" />
-        <div class="brand-text">
-          <span class="brand-title">SDP Browser<span class="ver">v0.1</span></span>
-        </div>
-      </a>
+      <a class="rmbl-mark" href="https://rmbl.org" target="_blank" rel="noopener" aria-label="RMBL">R M B L</a>
+      <span class="topbar-sep" aria-hidden="true"></span>
+      <a class="topbar-parent" href="https://data.rmbl.org" target="_blank" rel="noopener">Data Hub</a>
+      <span class="topbar-chev" aria-hidden="true">›</span>
+      <span class="topbar-current">SDP Browser<span class="ver">v0.1</span></span>
       <nav>
         <a href="https://www.rmbl.org/scientists/resources/spatial-data-platform/" target="_blank" rel="noopener">About</a>
-        <div class="nav-dropdown" id="navTools">
-          <button class="nav-btn" data-toggle="navTools">Research Tools ▾</button>
-          <div class="nav-dropdown-menu">
-            <a href="https://rmblknowledgefabric.org" target="_blank" rel="noopener">
-              RMBL Knowledge Fabric
-              <span class="desc">Search publications, protocols, and research communities</span>
-            </a>
-            <a href="https://rmblcomputehub.org" target="_blank" rel="noopener">
-              RMBL Compute Hub
-              <span class="desc">JupyterHub environment for geospatial analysis</span>
-            </a>
-          </div>
-        </div>
       </nav>
     </div>
     <div id="app">
@@ -3942,18 +3923,6 @@ message("Saved to ${outName}")
 
       // ---------- sidebar collapse + resize ----------
       // ---------- welcome modal (first visit only) ----------
-      // ---------- top bar dropdown ----------
-      document.querySelectorAll("[data-toggle]").forEach((btn) => {
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const dd = document.getElementById(btn.dataset.toggle);
-          dd.classList.toggle("open");
-        });
-      });
-      document.addEventListener("click", () => {
-        document.querySelectorAll(".nav-dropdown.open").forEach((d) => d.classList.remove("open"));
-      });
-
       if (!localStorage.getItem("sdp-welcome-seen")) {
         document.getElementById("welcomeModal").hidden = false;
       }
