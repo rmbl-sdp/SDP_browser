@@ -766,6 +766,50 @@
         font-size: 11px; color: var(--muted); font-weight: 400;
         margin-left: 6px; letter-spacing: 0;
       }
+      .dd-view-toggle {
+        display: inline-flex;
+        border: 1px solid var(--border); border-radius: var(--r-md);
+        overflow: hidden;
+      }
+      .dd-view-btn {
+        background: transparent; color: var(--muted);
+        border: 0; font-size: 11px; padding: 5px 10px;
+        cursor: pointer; font-family: inherit; font-weight: 500;
+        width: auto;
+      }
+      .dd-view-btn + .dd-view-btn { border-left: 1px solid var(--border); }
+      .dd-view-btn.active { background: var(--bg-elev-2); color: var(--text); }
+      .dd-view-btn:hover:not(.active) { color: var(--text); background: rgba(244,238,228,0.04); }
+      .dd-table {
+        width: 100%; border-collapse: collapse;
+        font-size: 12px;
+      }
+      .dd-table thead th {
+        text-align: left; padding: 8px 10px;
+        font-weight: 600; font-size: 11px;
+        color: var(--muted); letter-spacing: 0.02em;
+        background: var(--panel);
+        border-bottom: 1px solid var(--border-strong);
+        cursor: pointer; user-select: none;
+        white-space: nowrap;
+        position: sticky; top: 0; z-index: 1;
+      }
+      .dd-table thead th:hover { color: var(--accent); }
+      .dd-table thead th .sort-arrow {
+        display: inline-block; margin-left: 4px;
+        color: var(--accent); font-size: 10px;
+      }
+      .dd-table tbody td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      .dd-table tbody tr { cursor: pointer; }
+      .dd-table tbody tr:hover { background: rgba(244,238,228,0.04); }
+      .dd-table tbody tr.selected { background: rgba(240,80,40,0.10); }
+      .dd-table tbody tr.added { opacity: 0.55; }
+      .dd-table td.col-title { color: var(--text); font-weight: 500; }
+      .dd-table td.col-num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
       .dd-body {
         flex: 1; min-height: 0;
         display: grid; grid-template-columns: 240px 1fr 340px;
@@ -802,12 +846,32 @@
       }
       .dd-facet-reset:hover { color: var(--text); border-color: var(--accent); }
 
-      .dd-results {
+      .dd-results { align-content: start; }
+      .dd-group { margin-bottom: 14px; }
+      .dd-group-header {
+        display: flex; align-items: center; gap: 6px;
+        padding: 6px 4px;
+        cursor: pointer; user-select: none;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 10px;
+        color: var(--text);
+      }
+      .dd-group-header:hover { color: var(--accent); }
+      .dd-group-chev {
+        display: inline-block;
+        width: 10px; font-size: 11px; color: var(--muted);
+        transition: transform 120ms;
+      }
+      .dd-group.collapsed .dd-group-chev { transform: rotate(-90deg); }
+      .dd-group-label { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; }
+      .dd-group-count { font-size: 11px; color: var(--muted); margin-left: auto; }
+      .dd-group-body {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
         gap: 10px;
         align-content: start;
       }
+      .dd-group.collapsed .dd-group-body { display: none; }
       .dd-card {
         border: 1px solid var(--border);
         border-radius: var(--r-lg);
@@ -1041,6 +1105,10 @@
           <input id="ddSearch" type="search" placeholder="Search title, id, description…" autocomplete="off" />
           <button id="ddSearchClear" class="search-clear" type="button" hidden aria-label="Clear search">✕</button>
         </div>
+        <div class="dd-view-toggle" role="tablist" aria-label="View mode">
+          <button class="dd-view-btn active" data-view="grid" role="tab">Grid</button>
+          <button class="dd-view-btn" data-view="table" role="tab">Table</button>
+        </div>
         <button id="ddClose" class="secondary" style="width: auto;">Close</button>
       </div>
       <div class="dd-body">
@@ -1092,6 +1160,9 @@
           selected: { domain: new Set(), release: new Set(), type: new Set(), gsd: new Set(), bands: new Set() },
           yearRange: null,
           detailId: null,
+          view: "grid",            // "grid" or "table" — persisted in localStorage
+          sortField: "title",      // table-view sort column
+          sortDir: "asc",          // "asc" or "desc"
         },
         referenceOn: true,
         sitesOn: false,
@@ -1985,6 +2056,8 @@
       const FACET_ORDER = {
         domain: ["UG", "UER", "GT", "GMUG"],
         release: ["Release5", "Release4", "Release3", "Release2", "Release1", "Basemaps"],
+        // Type values mirror the curated section order in the browse pane.
+        type: ["Imagery", "Topo", "Hydro", "Climate", "Radiation", "Snow", "Vegetation", "Mask", "Planning", "Supplemental"],
         gsd: ["≤ 1 m", "1–5 m", "5–10 m", "> 10 m", "unknown"],
         bands: ["1", "2–3", "4+"],
       };
@@ -2020,7 +2093,7 @@
         // how each choice would narrow things. Empty buckets are hidden
         // unless they're currently selected (so users can uncheck them).
         const live = aggregateLive(results);
-        const groups = ["domain", "release", "type", "gsd", "bands"];
+        const groups = ["type", "domain", "gsd", "bands", "release"];
         let html = "";
         if (anySelected) {
           html += `<button class="dd-facet-reset" data-act="reset-all">Reset all filters</button>`;
@@ -2087,14 +2160,68 @@
         return f;
       }
 
+      // Curated section order for the grouped discover view. Unknown types fall
+      // after these alphabetically; "Other" (descriptors with no rmbl:type) lands last.
+      const DD_TYPE_ORDER = ["Imagery","Topo","Hydro","Climate","Radiation","Snow","Vegetation","Mask","Planning","Supplemental"];
+      const DD_COLLAPSE_KEY = "sdp-dd-collapsed";
+      const DD_VIEW_KEY = "sdp-dd-view";
+      const DD_SORT_KEY = "sdp-dd-sort";
+      function loadDdCollapsed() {
+        try { return new Set(JSON.parse(localStorage.getItem(DD_COLLAPSE_KEY) || "[]")); }
+        catch { return new Set(); }
+      }
+      function saveDdCollapsed(set) {
+        try { localStorage.setItem(DD_COLLAPSE_KEY, JSON.stringify([...set])); } catch {}
+      }
+
+      // Table-view columns. `sortKey` overrides the default (string of `get`) for
+      // numeric columns and the curated-order Type column.
+      const DD_TABLE_COLUMNS = [
+        { key: "title",   label: "Name",           get: (d) => d.title || "",                                    cls: "col-title" },
+        { key: "type",    label: "Type",           get: (d) => d.type  || "—",
+          sortKey: (d) => { const i = DD_TYPE_ORDER.indexOf(d.type); return i === -1 ? 999 : i; } },
+        { key: "domain",  label: "Domain",         get: (d) => d.domain  || "—" },
+        { key: "release", label: "Release",        get: (d) => d.release || "—" },
+        { key: "gsd",     label: "Resolution (m)", get: (d) => d.gsd != null ? String(d.gsd) : "—",
+          sortKey: (d) => d.gsd ?? Infinity, cls: "col-num" },
+        { key: "bands",   label: "Bands",          get: (d) => d.bandCount != null ? String(d.bandCount) : "—",
+          sortKey: (d) => d.bandCount ?? Infinity, cls: "col-num" },
+        { key: "kind",    label: "Kind",           get: (d) => d.kind || "—" },
+      ];
+
       function renderDiscoveryResults(results) {
         const root = document.getElementById("ddResults");
         if (results.length === 0) {
           root.innerHTML = `<div class="dd-results-empty">No matches. Loosen the filters or clear your search.</div>`;
           return;
         }
+        if (state.discovery.view === "table") renderDiscoveryTable(root, results);
+        else renderDiscoveryGrid(root, results);
+      }
+
+      function renderDiscoveryGrid(root, results) {
+        // Group by rmbl:type (missing → "Other").
+        const groups = new Map();
+        for (const d of results) {
+          const t = d.type || "Other";
+          if (!groups.has(t)) groups.set(t, []);
+          groups.get(t).push(d);
+        }
+        const orderedTypes = [...groups.keys()].sort((a, b) => {
+          const ia = DD_TYPE_ORDER.indexOf(a), ib = DD_TYPE_ORDER.indexOf(b);
+          // Unknowns (-1) and "Other" both land past the curated list; "Other" last.
+          const ka = ia === -1 ? DD_TYPE_ORDER.length + (a === "Other" ? 1 : 0) : ia;
+          const kb = ib === -1 ? DD_TYPE_ORDER.length + (b === "Other" ? 1 : 0) : ib;
+          return ka !== kb ? ka - kb : a.localeCompare(b);
+        });
+
+        // While search is active, ignore persisted collapse so every matching
+        // group is visible. Manual collapse is still possible mid-search.
+        const searchActive = (state.discovery.q || "").trim().length > 0;
+        const collapsed = searchActive ? new Set() : loadDdCollapsed();
         const activeIds = new Set(state.active.map((l) => l.catalogId));
-        root.innerHTML = results.map((d) => {
+
+        const cardHtml = (d) => {
           const pills = [];
           if (d.domain) pills.push(`<span class="pill domain">${esc(d.domain)}</span>`);
           if (d.release) pills.push(`<span class="pill release">${esc(d.release)}</span>`);
@@ -2109,7 +2236,32 @@
             <div class="d clamp">${esc(d.description)}</div>
             <div class="dd-pills">${pills.join("")}</div>
           </div>`;
+        };
+
+        root.innerHTML = orderedTypes.map((type) => {
+          const items = groups.get(type);
+          const isCollapsed = collapsed.has(type);
+          return `<div class="dd-group${isCollapsed ? " collapsed" : ""}" data-type="${esc(type)}">
+            <div class="dd-group-header">
+              <span class="dd-group-chev">▾</span>
+              <span class="dd-group-label">${esc(type)}</span>
+              <span class="dd-group-count">${items.length}</span>
+            </div>
+            <div class="dd-group-body">${items.map(cardHtml).join("")}</div>
+          </div>`;
         }).join("");
+
+        root.querySelectorAll(".dd-group-header").forEach((h) => {
+          h.addEventListener("click", () => {
+            const group = h.parentElement;
+            const type = group.dataset.type;
+            const willCollapse = group.classList.toggle("collapsed");
+            const set = loadDdCollapsed();
+            if (willCollapse) set.add(type); else set.delete(type);
+            saveDdCollapsed(set);
+          });
+        });
+
         root.querySelectorAll(".dd-card").forEach((el) => {
           el.addEventListener("click", () => {
             state.discovery.detailId = el.dataset.id;
@@ -2117,6 +2269,87 @@
           });
         });
       }
+
+      function renderDiscoveryTable(root, results) {
+        const { sortField, sortDir } = state.discovery;
+        const col = DD_TABLE_COLUMNS.find((c) => c.key === sortField) || DD_TABLE_COLUMNS[0];
+        const dir = sortDir === "desc" ? -1 : 1;
+        const sortKey = col.sortKey || ((d) => (col.get(d) || "").toString().toLowerCase());
+        const sorted = [...results].sort((a, b) => {
+          const ka = sortKey(a), kb = sortKey(b);
+          if (ka < kb) return -1 * dir;
+          if (ka > kb) return 1 * dir;
+          return 0;
+        });
+
+        const activeIds = new Set(state.active.map((l) => l.catalogId));
+        const headHtml = DD_TABLE_COLUMNS.map((c) => {
+          const isSorted = c.key === sortField;
+          const arrow = isSorted ? `<span class="sort-arrow">${sortDir === "desc" ? "▼" : "▲"}</span>` : "";
+          return `<th data-sort="${c.key}">${esc(c.label)}${arrow}</th>`;
+        }).join("");
+
+        const rowHtml = sorted.map((d) => {
+          const sel = d.id === state.discovery.detailId ? " selected" : "";
+          const added = activeIds.has(d.id) ? " added" : "";
+          const cells = DD_TABLE_COLUMNS.map((c) =>
+            `<td class="${c.cls || ""}">${esc(c.get(d))}</td>`
+          ).join("");
+          return `<tr class="${sel}${added}" data-id="${esc(d.id)}" title="${esc(d.description || "")}">${cells}</tr>`;
+        }).join("");
+
+        root.innerHTML = `<table class="dd-table">
+          <thead><tr>${headHtml}</tr></thead>
+          <tbody>${rowHtml}</tbody>
+        </table>`;
+
+        root.querySelectorAll("th[data-sort]").forEach((th) => {
+          th.addEventListener("click", () => {
+            const field = th.dataset.sort;
+            if (state.discovery.sortField === field) {
+              state.discovery.sortDir = state.discovery.sortDir === "asc" ? "desc" : "asc";
+            } else {
+              state.discovery.sortField = field;
+              state.discovery.sortDir = "asc";
+            }
+            try {
+              localStorage.setItem(DD_SORT_KEY,
+                JSON.stringify({ field: state.discovery.sortField, dir: state.discovery.sortDir }));
+            } catch {}
+            renderDiscovery();
+          });
+        });
+
+        root.querySelectorAll("tbody tr").forEach((tr) => {
+          tr.addEventListener("click", () => {
+            state.discovery.detailId = tr.dataset.id;
+            renderDiscovery();
+          });
+        });
+      }
+
+      // Restore view + sort prefs from localStorage and wire the toggle.
+      (() => {
+        try {
+          const v = localStorage.getItem(DD_VIEW_KEY);
+          if (v === "table" || v === "grid") state.discovery.view = v;
+          const s = JSON.parse(localStorage.getItem(DD_SORT_KEY) || "null");
+          if (s && typeof s.field === "string" && (s.dir === "asc" || s.dir === "desc")) {
+            state.discovery.sortField = s.field;
+            state.discovery.sortDir = s.dir;
+          }
+        } catch {}
+        document.querySelectorAll(".dd-view-btn").forEach((b) => {
+          b.classList.toggle("active", b.dataset.view === state.discovery.view);
+          b.addEventListener("click", () => {
+            state.discovery.view = b.dataset.view;
+            try { localStorage.setItem(DD_VIEW_KEY, state.discovery.view); } catch {}
+            document.querySelectorAll(".dd-view-btn").forEach((b2) =>
+              b2.classList.toggle("active", b2.dataset.view === state.discovery.view));
+            renderDiscovery();
+          });
+        });
+      })();
 
       function renderDiscoveryDetail() {
         const root = document.getElementById("ddDetail");
