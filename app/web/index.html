@@ -2647,6 +2647,7 @@
             ${downloadDataUrl ? `<a class="stac-link" target="_blank" rel="noopener" href="${downloadDataUrl}">${esc(downloadLabel)} ↗</a>` : ""}
             ${metadataUrl ? `<a class="stac-link" target="_blank" rel="noopener" href="${metadataUrl}">Download metadata (JSON) ↗</a>` : ""}
             ${stacUrl ? `<a class="stac-link" target="_blank" rel="noopener" href="${stacBrowserLink(stacUrl)}">Open in STAC Browser ↗</a>` : ""}
+            ${d.rsdp_id ? `<a class="stac-link" target="_blank" rel="noopener" href="https://github.com/rmbl-sdp/sdp-products/issues/new?template=dataset-issue.yml&catalog_id=${encodeURIComponent(d.rsdp_id)}">Report an issue ↗</a>` : ""}
           </div>`;
         root.querySelector(".add")?.addEventListener("click", () => {
           if (added || !canAdd) return;
