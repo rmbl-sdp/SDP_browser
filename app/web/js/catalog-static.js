@@ -71,11 +71,13 @@ function resolveUrl(base, href) {
   try { return new URL(href, base).toString(); } catch { return href; }
 }
 
-async function fetchJson(url, { timeoutMs = 15000 } = {}) {
+async function fetchJson(url, { timeoutMs = 15000, cache } = {}) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { signal: ctl.signal });
+    const init = { signal: ctl.signal };
+    if (cache) init.cache = cache;
+    const r = await fetch(url, init);
     if (!r.ok) throw new Error(`${r.status} ${url}`);
     return await r.json();
   } finally {
@@ -322,6 +324,21 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
       || (firstItem ? resolveUrl(collectionUrl, `./${firstItem.id}/${firstItem.id}.json`) : null),
     stacCollectionUrl: collectionUrl,
     thumbnail: collection.assets?.thumbnail?.href || null,
+    // STAC version-extension fields. We surface `deprecated` so the UI can
+    // hide these by default and tag them in the detail pane, and pull the
+    // successor's collection id (parsed from the rel="successor-version"
+    // link path) so we can offer a one-click "use the updated version" path.
+    deprecated: collection.deprecated === true,
+    successor: (() => {
+      const link = (collection.links || []).find((l) => l.rel === "successor-version");
+      if (!link?.href) return null;
+      // hrefs are typically "../<successor-collection-id>/collection.json"; the
+      // collection id is the directory segment two up from the file.
+      const parts = link.href.split("/").filter(Boolean);
+      const fileIdx = parts.lastIndexOf("collection.json");
+      const id = fileIdx > 0 ? parts[fileIdx - 1] : null;
+      return id ? { id, title: link.title || null } : null;
+    })(),
   };
 
   // Time-series: try fast-path detection first (dates parsed from link
@@ -395,10 +412,15 @@ function buildDescriptor({ collection, items, collectionUrl, fastDates }) {
 
 // --- walker ---
 
-export async function walkCatalog(rootUrl, onProgress) {
-  const root = await fetchJson(rootUrl);
+export async function walkCatalog(rootUrl, onProgress, { force = false } = {}) {
+  // When the caller is doing an explicit refresh, bypass the browser HTTP
+  // cache so a freshly-updated STAC catalog (e.g. new deprecation flags)
+  // doesn't get served stale from disk cache. Default `fetch()` cache is fine
+  // for the first/lazy walk.
+  const fj = force ? (url) => fetchJson(url, { cache: "reload" }) : fetchJson;
+  const root = await fj(rootUrl);
   const domainUrls = childLinks(root).map((l) => resolveUrl(rootUrl, l.href));
-  const domains = await parallelMap(domainUrls, 4, fetchJson);
+  const domains = await parallelMap(domainUrls, 4, fj);
 
   const collectionUrls = [];
   domains.forEach((d, i) => {
@@ -414,14 +436,14 @@ export async function walkCatalog(rootUrl, onProgress) {
 
   const entries = await parallelMap(collectionUrls, 10, async (curl) => {
     try {
-      const collection = await fetchJson(curl);
+      const collection = await fj(curl);
       const iLinks = itemLinks(collection);
       const iUrls = iLinks.map((l) => resolveUrl(curl, l.href));
 
       if (iUrls.length > LARGE_COLLECTION_THRESHOLD) {
         // Fast path: parse full dates from link hrefs, fetch only 1 sample.
         const fastDates = detectDatesFromLinks(iLinks);
-        const sampleItem = await fetchJson(iUrls[0]);
+        const sampleItem = await fj(iUrls[0]);
         if (sampleItem?._error) throw new Error(sampleItem._error);
         console.debug(
           `[fast-path] ${collection.id}: ${iUrls.length} items → 1 fetch, ${fastDates?.granularity ?? "?"} (${fastDates?.dates?.length ?? 0} dates)`,
@@ -430,7 +452,7 @@ export async function walkCatalog(rootUrl, onProgress) {
       }
 
       // Standard path: fetch all items (small collections).
-      const items = await parallelMap(iUrls, 4, fetchJson);
+      const items = await parallelMap(iUrls, 4, fj);
       const failedItems = items.filter((i) => i && i._error);
       if (failedItems.length) console.warn("items failed in", curl, failedItems);
       return { collection, items: items.filter((i) => i && !i._error), collectionUrl: curl };
@@ -534,7 +556,7 @@ export async function loadRepo({ rootUrl, onProgress, force = false } = {}) {
     fromCache = true;
     onProgress?.({ done: descriptors.length, total: descriptors.length, stage: "cache" });
   } else {
-    descriptors = await walkCatalog(rootUrl, onProgress);
+    descriptors = await walkCatalog(rootUrl, onProgress, { force });
     try {
       await idbSet(CACHE_KEY, {
         fp, builtAt: Date.now(), descriptors, rootUrl,
@@ -570,9 +592,10 @@ export function makeInMemoryRepo(descriptors, { fallback = false } = {}) {
   };
 }
 
-function searchDescriptors(descriptors, { q = "", selected = {}, yearRange = null } = {}) {
+function searchDescriptors(descriptors, { q = "", selected = {}, yearRange = null, includeDeprecated = false } = {}) {
   const needle = q.trim().toLowerCase();
   const matches = (d) => {
+    if (!includeDeprecated && d.deprecated) return false;
     if (needle) {
       const hay = `${d.id} ${d.title} ${d.description} ${d.type || ""} ${d.rsdp_id || ""}`.toLowerCase();
       if (!hay.includes(needle)) return false;
