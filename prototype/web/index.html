@@ -664,6 +664,43 @@
 
       /* ---------- Time-series controls ---------- */
       .ts-control { margin-top: 8px; }
+      .anim-row {
+        display: flex; align-items: center; gap: 6px;
+        flex-wrap: nowrap;
+        margin-bottom: 2px;
+      }
+      .anim-speed-lbl { font-size: 11px; color: var(--muted); }
+      .anim-speed-disp { font-size: 11px; color: var(--muted); min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+      .anim-loop-row {
+        display: flex; align-items: center; gap: 4px;
+        margin-top: 4px; font-size: 11px; color: var(--text);
+        cursor: pointer;
+      }
+      .anim-loop-row input { margin: 0; }
+      .anim-checks {
+        display: flex; flex-wrap: wrap; gap: 10px;
+        margin-top: 4px;
+      }
+      .anim-checks label {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 11px; color: var(--text); cursor: pointer;
+      }
+      .anim-checks input { margin: 0; }
+      .map-date {
+        position: absolute; top: 16px; right: 16px;
+        z-index: 10;
+        background: rgba(26, 26, 16, 0.88);
+        color: #fff;
+        padding: 8px 18px;
+        border-radius: var(--r-md);
+        font-size: 32px; font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.02em;
+        border: 1px solid var(--border);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+        pointer-events: none; user-select: none;
+        text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+      }
       .ts-stepper {
         display: flex; align-items: center; gap: 6px;
         margin-bottom: 6px;
@@ -1065,6 +1102,7 @@
           </span>
         </div>
         <div id="mapLegend" class="empty"></div>
+        <div id="mapDate" class="map-date" hidden></div>
       </div>
     </div>
     <button id="sidebarToggle" type="button" aria-label="Toggle sidebar">‹</button>
@@ -1309,8 +1347,13 @@
       function resolveCogUrl(lyr) {
         const item = catalogItem(lyr.catalogId);
         if (item.kind === "timeseries" && item.timeseries) {
-          const dateStr = lyr.date ?? item.timeseries.default_date ?? item.timeseries.dates[0];
-          return resolveTimeseriesUrl(item.timeseries.url_template, dateStr);
+          // Fall back to LAST date (freshest data) — not first — when both
+          // lyr.date and default_date are missing. Old cached descriptors
+          // may lack default_date, in which case the previous fallback to
+          // dates[0] would silently render the earliest year.
+          const ts = item.timeseries;
+          const dateStr = lyr.date ?? ts.default_date ?? ts.dates[ts.dates.length - 1];
+          return resolveTimeseriesUrl(ts.url_template, dateStr);
         }
         return item.cog_url;
       }
@@ -1370,6 +1413,7 @@
         const ctl = reloadCtl[uid];
         if (!ctl) return;
         if (ctl.onSourceData) map.off("sourcedata", ctl.onSourceData);
+        if (ctl.poll) clearInterval(ctl.poll);
         if (ctl.timeout) clearTimeout(ctl.timeout);
         delete reloadCtl[uid];
       }
@@ -1381,25 +1425,32 @@
 
         cancelReload(lyr.uid);
 
+        // Expose a per-layer "tiles loaded and swapped in" promise. The
+        // animation loop awaits this to pace frames to actual tile-load time
+        // — slow first pass, fast once cached. Resolves on swap() or timeout.
+        let resolveReload;
+        lyr._reloadDone = new Promise((res) => { resolveReload = res; });
+
         // New generation ID — avoids remove+re-create of the same ID.
         const gen = `cog-${lyr.uid}-${Date.now()}`;
         const newMid = gen;
         const newSrc = gen;
 
-        map.addSource(newSrc, {
-          type: "raster",
-          tiles: [tileUrl(lyr)],
-          tileSize: 256,
-          ...(item.bbox ? { bounds: item.bbox } : {}),
-        });
-        map.addLayer({
-          id: newMid, type: "raster", source: newSrc,
-          layout: { visibility: lyr.visible ? "visible" : "none" },
-          paint: { "raster-opacity": lyr.opacity },
-        });
+        const useFade = !!lyr.anim?.fade;
+        const FADE_MS = 250;
 
-        // New layer loads on top of the old one. Old is removed once new
-        // is ready. Avoids transparency stacking artifacts.
+        const sweepOrphans = () => {
+          // Any cog-${uid}* source other than newMid is an orphan; sweep so
+          // it doesn't haunt the map underneath subsequent frames.
+          const uidPrefix = `cog-${lyr.uid}`;
+          for (const sl of [...map.getStyle().layers]) {
+            if (sl.id === newMid) continue;
+            if (sl.id === uidPrefix || sl.id.startsWith(`${uidPrefix}-`)) {
+              if (map.getLayer(sl.id)) map.removeLayer(sl.id);
+              if (map.getSource(sl.source)) map.removeSource(sl.source);
+            }
+          }
+        };
 
         let done = false;
         const swap = () => {
@@ -1409,24 +1460,95 @@
           if (!state.active.some((l) => l.uid === lyr.uid)) {
             if (map.getLayer(newMid)) map.removeLayer(newMid);
             if (map.getSource(newSrc)) map.removeSource(newSrc);
+            resolveReload();
             return;
           }
-          // Remove old — new is already visible and loaded.
-          if (map.getLayer(oldMid)) map.removeLayer(oldMid);
-          if (map.getSource(oldSrc)) map.removeSource(oldSrc);
+          if (useFade) {
+            // Trigger the fade-in we armed via raster-opacity-transition on
+            // addLayer. The old layer stays visible underneath until the new
+            // one is fully opaque — cross-fade without an intermediate blank.
+            map.setPaintProperty(newMid, "raster-opacity", lyr.opacity);
+            setTimeout(() => {
+              if (map.getLayer(oldMid)) map.removeLayer(oldMid);
+              if (map.getSource(oldSrc)) map.removeSource(oldSrc);
+              sweepOrphans();
+            }, FADE_MS);
+          } else {
+            // Instant swap.
+            if (map.getLayer(oldMid)) map.removeLayer(oldMid);
+            if (map.getSource(oldSrc)) map.removeSource(oldSrc);
+            sweepOrphans();
+          }
           // Promote new to canonical tracking. No tile re-fetch.
           activeLayerIds.set(lyr.uid, newMid);
           reorderMapLayers();
           ensureAoiOnTop();
           // Prefetch adjacent dates so the next scrub step is cached.
           prefetchAdjacentDates(lyr);
+          resolveReload();
         };
+        // sourcedata.isSourceLoaded for a new raster source surfaces two ways:
+        //   - sourceDataType="content" + isSourceLoaded=true → final tile load
+        //     for a network-fetched batch. The reliable signal for cold tiles.
+        //   - sourceDataType="metadata" + isSourceLoaded=true + the map
+        //     already reports tiles loaded → cache-hit case. MapLibre appears
+        //     to skip the "content" phase entirely when every tile is served
+        //     from the browser HTTP cache, so we'd otherwise wait the full 8s
+        //     timeout on every animation frame after the first loop.
+        // Listener is attached BEFORE addSource so the cached, possibly-
+        // synchronous events don't fire ahead of us. The 8s safety still
+        // applies if neither path triggers (e.g. all tiles 404 outside bounds).
         const onSourceData = (e) => {
-          if (e.sourceId === newSrc && e.isSourceLoaded) swap();
+          if (e.sourceId !== newSrc || !e.isSourceLoaded) return;
+          const cachedHit =
+            e.sourceDataType === "metadata" && map.areTilesLoaded();
+          if (e.sourceDataType === "content" || cachedHit) {
+            map.off("sourcedata", onSourceData);
+            swap();
+          }
         };
         map.on("sourcedata", onSourceData);
         const timeout = setTimeout(swap, 8000);
-        reloadCtl[lyr.uid] = { onSourceData, timeout };
+        const ctl = { onSourceData, timeout, poll: null };
+        reloadCtl[lyr.uid] = ctl;
+
+        // Now that the listener is armed, kick off the source. This order is
+        // load-bearing for cached-tile cases (e.g. animation second-loop).
+        map.addSource(newSrc, {
+          type: "raster",
+          tiles: [tileUrl(lyr)],
+          tileSize: 256,
+          ...(item.bbox ? { bounds: item.bbox } : {}),
+        });
+        map.addLayer({
+          id: newMid, type: "raster", source: newSrc,
+          layout: { visibility: lyr.visible ? "visible" : "none" },
+          paint: {
+            // With fade enabled, start invisible and let swap() drive the
+            // animated transition to lyr.opacity. Without fade, paint at full
+            // opacity immediately (existing behavior).
+            "raster-opacity": useFade ? 0 : lyr.opacity,
+            "raster-opacity-transition": { duration: useFade ? FADE_MS : 0 },
+          },
+        });
+
+        // Polling backup. The sourcedata event path is unreliable on
+        // browser-cache hits (MapLibre may skip the "content" phase entirely),
+        // and on animation timing where the metadata event fires before
+        // areTilesLoaded() returns true. Wait one frame for MapLibre to queue
+        // any tile loads, then poll until they're all done. Whichever signal
+        // (event or poll) trips swap() first wins; swap() is idempotent.
+        requestAnimationFrame(() => {
+          if (done) return;
+          if (map.areTilesLoaded()) { swap(); return; }
+          ctl.poll = setInterval(() => {
+            if (done) { clearInterval(ctl.poll); return; }
+            if (map.areTilesLoaded()) {
+              clearInterval(ctl.poll);
+              swap();
+            }
+          }, 50);
+        });
       }
 
       function removeMapLayer(uid) {
@@ -1902,9 +2024,12 @@
           colormap: item.default_colormap || "viridis",
           rescale: item.default_rescale || "0,1",
           date: item.kind === "timeseries" && item.timeseries
-            ? (item.timeseries.default_date ?? item.timeseries.dates[0]) : null,
+            ? (item.timeseries.default_date
+               ?? item.timeseries.dates[item.timeseries.dates.length - 1])
+            : null,
           mode: (item.kind === "multiband" || item.default_mode) ? (item.default_mode || "rgb") : null,
           bidx: (item.kind === "multiband" || item.default_bidx) ? (item.default_bidx || [1, 2, 3]).slice() : null,
+          anim: { playing: false, stepMs: 1000, loop: true },
           _pending: true, // tiles deferred until refinement completes
         };
         state.active.unshift(lyr);
@@ -1930,18 +2055,23 @@
           ensureAoiOnTop();
           renderAll();
           if (state.aoi) fetchStats();
-          // Start prefetching adjacent dates immediately after initial load.
-          prefetchAdjacentDates(lyr);
+          // For time-series layers, schedule background warm-up of the whole
+          // series + adjacent-date prefetch, but only after the visible tiles
+          // have actually loaded — otherwise the background fetches jam the
+          // HTTP/1.1 connection pool and the user waits longer for first paint.
+          scheduleWarmup(lyr);
         })();
       }
       function removeActive(uid) {
         const idx = state.active.findIndex((l) => l.uid === uid);
         if (idx < 0) return;
+        _stopAnim(state.active[idx]);
         state.active.splice(idx, 1);
         removeMapLayer(uid);
         if (state.expandedUid === uid) state.expandedUid = state.active[0]?.uid ?? null;
         renderAll();
         if (state.aoi) fetchStats();
+        updateMapDateDisplay();
       }
       function toggleVisibility(uid) {
         const lyr = state.active.find((l) => l.uid === uid);
@@ -2603,7 +2733,77 @@
         return tiles;
       }
 
-      function prefetchAdjacentDates(lyr) {
+      // Tile URL template for a specific date — pure, doesn't mutate lyr.
+      // (The old prefetch path mutated lyr.date temporarily, which raced with
+      // any in-flight animation tick or user click.)
+      function tileUrlForDate(lyr, date) {
+        const item = catalogItem(lyr.catalogId);
+        const ts = item?.timeseries;
+        if (!ts?.url_template) return null;
+        const cogUrl = resolveTimeseriesUrl(ts.url_template, date);
+        if (!cogUrl) return null;
+        const u = new URL(`${TITILER}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png`);
+        u.searchParams.set("url", cogUrl);
+        u.searchParams.set("rescale", rescaleToRaw(lyr.rescale, item));
+        const spec = renderSpec(lyr, item);
+        spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
+        if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", lyr.colormap);
+        if (item._nodata != null) u.searchParams.set("nodata", item._nodata);
+        return u.toString().replace(/%7B/g, "{").replace(/%7D/g, "}");
+      }
+
+      // Simple worker-pool: cap parallel work to `concurrency`.
+      async function runWithConcurrency(items, concurrency, worker) {
+        let idx = 0;
+        const next = async () => {
+          while (idx < items.length) {
+            const i = idx++;
+            try { await worker(items[i]); } catch {}
+          }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(concurrency, items.length) }, next),
+        );
+      }
+
+      // Ping /cog/info for nearby dates. Cheap responses (~1 KB) but each
+      // primes TiTiler's GDAL block cache (header + overview tables) for that
+      // date's COG so a later scrub opens warm. Capped at WARM_WINDOW dates
+      // centered on the current date — yearly series fit entirely; daily and
+      // monthly series get a windowed slice so we don't fire thousands of
+      // requests.
+      const WARM_WINDOW = 24;
+      async function warmTimeseriesCogs(lyr) {
+        const item = catalogItem(lyr.catalogId);
+        const ts = item?.timeseries;
+        if (!ts?.dates || !ts.url_template) return;
+        const all = ts.dates;
+        const cur = all.indexOf(lyr.date);
+        let toWarm;
+        if (all.length <= WARM_WINDOW) {
+          toWarm = all;
+        } else if (cur < 0) {
+          toWarm = all.slice(0, WARM_WINDOW);
+        } else {
+          const half = Math.floor(WARM_WINDOW / 2);
+          const start = Math.max(0, Math.min(all.length - WARM_WINDOW, cur - half));
+          toWarm = all.slice(start, start + WARM_WINDOW);
+        }
+        toWarm = toWarm.filter((d) => d !== lyr.date);
+        if (!toWarm.length) return;
+        await runWithConcurrency(toWarm, 4, async (date) => {
+          const cogUrl = resolveTimeseriesUrl(ts.url_template, date);
+          if (!cogUrl) return;
+          await fetch(`${TITILER}/cog/info?url=${encodeURIComponent(cogUrl)}`,
+                      { mode: "cors", priority: "low" });
+        });
+        console.debug(`[warm] ${lyr.catalogId}: pinged /cog/info for ${toWarm.length} of ${all.length} dates`);
+      }
+
+      // Background prefetch of the +/- 1 adjacent dates' tiles, so a manual
+      // scrub or animation step is already cached. Low-priority and
+      // concurrency-capped so it never starves the visible-tile fetch.
+      async function prefetchAdjacentDates(lyr) {
         const item = catalogItem(lyr.catalogId);
         if (!item?.timeseries) return;
         const dates = item.timeseries.dates;
@@ -2613,36 +2813,54 @@
         const adjacent = [];
         if (idx > 0) adjacent.push(dates[idx - 1]);
         if (idx < dates.length - 1) adjacent.push(dates[idx + 1]);
+        if (!adjacent.length) return;
 
         const tiles = getVisibleTiles();
         if (!tiles.length) return;
-        const savedDate = lyr.date;
-        let prefetchCount = 0;
+
+        const urls = [];
         for (const date of adjacent) {
-          lyr.date = date;
-          const urlTemplate = tileUrl(lyr);
-          lyr.date = savedDate;
+          const template = tileUrlForDate(lyr, date);
+          if (!template) continue;
           for (const { z, x, y } of tiles) {
-            const url = urlTemplate
-              .replace("{z}", z).replace("{x}", x).replace("{y}", y);
-            // Use fetch() with mode:"cors" to match MapLibre's request
-            // signature so the browser shares the same cache entry.
-            fetch(url, { mode: "cors" }).catch(() => {});
-            prefetchCount++;
+            urls.push(template.replace("{z}", z).replace("{x}", x).replace("{y}", y));
           }
         }
-        // Log a sample URL so we can compare with MapLibre's actual tile requests.
-        console.debug(`[prefetch] ${lyr.catalogId}: ${adjacent.length} dates × ${tiles.length} tiles = ${prefetchCount} requests (mapZoom=${map.getZoom().toFixed(2)}, tileZ=${tiles[0]?.z})`);
-        if (prefetchCount > 0 && tiles[0]) {
-          const sampleTile = tiles[0];
-          const sampleDate = adjacent[0];
-          const savedD = lyr.date;
-          lyr.date = sampleDate;
-          const sampleUrl = tileUrl(lyr)
-            .replace("{z}", sampleTile.z).replace("{x}", sampleTile.x).replace("{y}", sampleTile.y);
-          lyr.date = savedD;
-          console.debug(`[prefetch sample] ${sampleUrl}`);
-        }
+
+        await runWithConcurrency(urls, 4, async (url) => {
+          await fetch(url, { mode: "cors", priority: "low" });
+        });
+        console.debug(`[prefetch] ${lyr.catalogId}: ${adjacent.length} dates × ${tiles.length} tiles = ${urls.length} requests (cap=4, prio=low)`);
+      }
+
+      // After addMapLayer, wait until the visible source has actually loaded
+      // its tiles before kicking off background warm-up. Avoids jamming the
+      // HTTP/1.1 connection pool while the user is still waiting on first paint.
+      function scheduleWarmup(lyr) {
+        const item = catalogItem(lyr.catalogId);
+        if (!item?.timeseries) return; // single-layer, nothing to warm
+        const canonicalId = `cog-${lyr.uid}`;
+        let fired = false;
+        const fire = () => {
+          if (fired) return;
+          fired = true;
+          map.off("sourcedata", onSrc);
+          clearTimeout(safety);
+          warmTimeseriesCogs(lyr);
+          prefetchAdjacentDates(lyr);
+        };
+        const onSrc = (e) => {
+          if (e.sourceId === canonicalId &&
+              e.isSourceLoaded &&
+              e.sourceDataType === "content") {
+            fire();
+          }
+        };
+        map.on("sourcedata", onSrc);
+        // Safety: if the visible-source "content" event never fires (e.g. all
+        // tiles 404 because viewport is outside dataset extent), still run the
+        // warm-up so the user can scrub through years later.
+        const safety = setTimeout(fire, 4000);
       }
 
       function changeDate(lyr, newDate) {
@@ -2653,6 +2871,72 @@
         if (state.aoi) fetchStats();
         updateAoiDownloads();
         updateHash();
+        updateMapDateDisplay();
+      }
+
+      // ---------- Time-series animation ----------
+      // Single-active rule: only one layer animates at a time. Manual date
+      // picks (tsPrev/tsNext, year/month/calendar clicks) and layer restyling
+      // all stop the animation. Layer removal stops too.
+      //
+      // Frames are gated on the per-layer _reloadDone promise from
+      // reloadMapLayer, so the effective frame rate adapts to tile-load time
+      // — slow until cache warm, full requested speed afterward.
+      function _stopAnim(lyr) {
+        if (!lyr?.anim) return;
+        lyr.anim.playing = false;
+      }
+      function stopAnimation(lyr) {
+        if (!lyr?.anim?.playing) return;
+        _stopAnim(lyr);
+        renderActive();
+      }
+      function stopAllAnimations() {
+        let any = false;
+        state.active.forEach((l) => { if (l?.anim?.playing) { _stopAnim(l); any = true; } });
+        if (any) renderActive();
+      }
+      function userChangeDate(lyr, newDate) {
+        _stopAnim(lyr);
+        changeDate(lyr, newDate);
+      }
+
+      async function _animLoop(lyr, runId) {
+        const item = catalogItem(lyr.catalogId);
+        const ts = item?.timeseries;
+        if (!ts || !ts.dates || ts.dates.length < 2) { _stopAnim(lyr); return; }
+        while (lyr.anim.playing && lyr.anim.runId === runId) {
+          const i = Math.max(0, ts.dates.indexOf(lyr.date));
+          let next = i + 1;
+          if (next >= ts.dates.length) {
+            if (lyr.anim.loop) next = 0;
+            else { _stopAnim(lyr); renderActive(); break; }
+          }
+          changeDate(lyr, ts.dates[next]);
+          // Wait for BOTH the minimum frame delay (so the user can read each
+          // frame) AND the tile-load promise from reloadMapLayer (so we never
+          // advance past an unfinished frame). On cold tiles the load wins;
+          // on cached tiles the stepMs wins.
+          const minWait = new Promise((r) => setTimeout(r, lyr.anim.stepMs));
+          const tilesReady = lyr._reloadDone || Promise.resolve();
+          await Promise.all([minWait, tilesReady]);
+          if (lyr.anim.runId !== runId) break;
+        }
+      }
+
+      function startAnimation(lyr) {
+        const item = catalogItem(lyr.catalogId);
+        const ts = item?.timeseries;
+        if (!ts || !ts.dates || ts.dates.length < 2) return;
+        if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+        // Single-active: stop any other animating layer.
+        state.active.forEach((l) => { if (l.uid !== lyr.uid) _stopAnim(l); });
+        if (lyr.anim.playing) return;
+        lyr.anim.playing = true;
+        // runId guards against overlapping loops if start is called twice.
+        lyr.anim.runId = (lyr.anim.runId || 0) + 1;
+        renderActive();
+        _animLoop(lyr, lyr.anim.runId);
       }
 
       function wireTimeseriesControl(body, lyr, item) {
@@ -2663,17 +2947,17 @@
         // Stepper prev/next
         body.querySelector('[data-k="tsPrev"]')?.addEventListener("click", () => {
           const i = curIdx();
-          if (i > 0) changeDate(lyr, dates[i - 1]);
+          if (i > 0) userChangeDate(lyr, dates[i - 1]);
         });
         body.querySelector('[data-k="tsNext"]')?.addEventListener("click", () => {
           const i = curIdx();
-          if (i < dates.length - 1) changeDate(lyr, dates[i + 1]);
+          if (i < dates.length - 1) userChangeDate(lyr, dates[i + 1]);
         });
 
         // Picker interactions (by granularity)
         // Yearly: each year button
         body.querySelectorAll(".ts-yr").forEach((btn) => {
-          btn.addEventListener("click", () => changeDate(lyr, btn.dataset.date));
+          btn.addEventListener("click", () => userChangeDate(lyr, btn.dataset.date));
         });
 
         // Monthly: year navigation + month buttons
@@ -2691,7 +2975,7 @@
               return `<button class="ts-mo${sel ? " active" : ""}${avail ? "" : " unavail"}" data-date="${ds}" ${avail ? "" : "disabled"}>${m}</button>`;
             }).join("");
             body.querySelectorAll(".ts-mo:not(.unavail)").forEach((btn) => {
-              btn.addEventListener("click", () => changeDate(lyr, btn.dataset.date));
+              btn.addEventListener("click", () => userChangeDate(lyr, btn.dataset.date));
             });
           };
           body.querySelector('[data-k="mpYearPrev"]').addEventListener("click", () => {
@@ -2717,7 +3001,7 @@
             body.querySelector('[data-k="calMonthLabel"]').textContent =
               `${MONTH_NAMES[viewMonth - 1]} ${viewYear}`;
             body.querySelectorAll(".ts-cal-day.avail").forEach((btn) => {
-              btn.addEventListener("click", () => changeDate(lyr, btn.dataset.date));
+              btn.addEventListener("click", () => userChangeDate(lyr, btn.dataset.date));
             });
             body.querySelector('[data-k="calPrev"]').addEventListener("click", () => {
               viewMonth -= 1;
@@ -2824,10 +3108,29 @@
           ${isTs && item.timeseries ? renderTimeseriesControlHTML(lyr, item) : ""}
           ${presetsBlock}
           ${showCmapTopLevel ? `<label>Colormap</label>${cmapPickerHTML}` : ""}
-          <details class="act-advanced">
+          <details class="act-advanced"${lyr.advancedOpen ? " open" : ""}>
             <summary>Advanced styling</summary>
             ${cleanBandBlock}
             ${showCmapTopLevel ? "" : `<label>Colormap</label>${cmapPickerHTML}`}
+            ${(isTs && item.timeseries && item.timeseries.dates.length > 1) ? (() => {
+              const a = lyr.anim || { playing: false, stepMs: 1000, loop: true };
+              const playLabel = a.playing ? "⏸ Pause" : "▶ Play";
+              return `
+                <label>Animation</label>
+                <div class="anim-row">
+                  <button data-k="animToggle" class="dl-btn" style="flex: 0 0 72px;">${playLabel}</button>
+                  <span class="anim-speed-lbl">Speed</span>
+                  <input data-k="animSpeed" type="range" min="200" max="3000" step="100"
+                         value="${a.stepMs}" style="flex: 1; min-width: 0;" />
+                  <span data-k="animSpeedDisp" class="anim-speed-disp">${(a.stepMs/1000).toFixed(1)}s</span>
+                </div>
+                <div class="anim-checks">
+                  <label><input data-k="animLoop" type="checkbox" ${a.loop !== false ? "checked" : ""} /> Loop</label>
+                  <label><input data-k="animFade" type="checkbox" ${a.fade ? "checked" : ""} /> Fade</label>
+                  <label><input data-k="animDisplayDate" type="checkbox" ${a.displayDate ? "checked" : ""} /> Date overlay</label>
+                </div>
+              `;
+            })() : ""}
             <label>Rescale (min,max)</label>
             <div style="display: flex; gap: 4px;">
               <input data-k="rescale" type="text" value="${lyr.rescale}" style="flex: 1; min-width: 0;" />
@@ -2844,7 +3147,17 @@
         const body = rootEl.querySelector(".act-body");
         body.addEventListener("click", (ev) => ev.stopPropagation());
 
+        // Persist the Advanced-styling panel's open/closed state across the
+        // renderActive() rebuilds that fire on every animation tick.
+        const advDetails = body.querySelector(".act-advanced");
+        advDetails?.addEventListener("toggle", () => {
+          lyr.advancedOpen = advDetails.open;
+        });
+
         const reRenderRow = () => {
+          // Restyling invalidates the in-flight animation since the new URL
+          // changes the tile keys — stop cleanly.
+          _stopAnim(lyr);
           reloadMapLayer(lyr);
           renderMapLegend();
           if (state.aoi) fetchStats();
@@ -2954,6 +3267,66 @@
         if (item.kind === "timeseries" && item.timeseries) {
           wireTimeseriesControl(body, lyr, item);
         }
+
+        // Animation controls (time-series only).
+        const animToggleBtn = body.querySelector('[data-k="animToggle"]');
+        const animSpeedInput = body.querySelector('[data-k="animSpeed"]');
+        const animSpeedDisp  = body.querySelector('[data-k="animSpeedDisp"]');
+        const animLoopInput  = body.querySelector('[data-k="animLoop"]');
+        if (animToggleBtn) {
+          animToggleBtn.addEventListener("click", () => {
+            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+            if (lyr.anim.playing) stopAnimation(lyr);
+            else startAnimation(lyr);
+          });
+        }
+        if (animSpeedInput && animSpeedDisp) {
+          animSpeedInput.addEventListener("input", (e) => {
+            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+            lyr.anim.stepMs = +e.target.value;
+            animSpeedDisp.textContent = `${(lyr.anim.stepMs / 1000).toFixed(1)}s`;
+            // The async loop re-reads stepMs each iteration, so the new speed
+            // takes effect on the next frame — no need to restart anything.
+          });
+        }
+        if (animLoopInput) {
+          animLoopInput.addEventListener("change", (e) => {
+            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+            lyr.anim.loop = e.target.checked;
+          });
+        }
+        const animFadeInput = body.querySelector('[data-k="animFade"]');
+        const animDateInput = body.querySelector('[data-k="animDisplayDate"]');
+        if (animFadeInput) {
+          animFadeInput.addEventListener("change", (e) => {
+            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+            lyr.anim.fade = e.target.checked;
+          });
+        }
+        if (animDateInput) {
+          animDateInput.addEventListener("change", (e) => {
+            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+            lyr.anim.displayDate = e.target.checked;
+            updateMapDateDisplay();
+          });
+        }
+      }
+
+      // Top-right date overlay for kiosk-style display. Shows the date of the
+      // first active time-series layer with anim.displayDate enabled, hidden
+      // otherwise. Updates on changeDate, toggle, animation start/stop, and
+      // layer add/remove.
+      function updateMapDateDisplay() {
+        const el = document.getElementById("mapDate");
+        if (!el) return;
+        const lyr = state.active.find((l) =>
+          l.anim?.displayDate && l.date != null
+        );
+        if (!lyr) { el.hidden = true; el.textContent = ""; return; }
+        const item = catalogItem(lyr.catalogId);
+        const g = item?.timeseries?.granularity || "yearly";
+        el.textContent = formatDateLabel(lyr.date, g);
+        el.hidden = false;
       }
 
       // ---------- floating map legend ----------
@@ -4259,11 +4632,14 @@ message("Saved to ${outName}")
                 opacity: kv.o ? Math.max(0, Math.min(1, (+kv.o) / 100)) : 0.85,
                 colormap: kv.c || item.default_colormap || "viridis",
                 rescale: kv.r || item.default_rescale || "0,1",
-                year: item.kind === "timeseries"
-                  ? (kv.d || kv.y || item.timeseries?.default_date || item.timeseries?.dates?.[0])
+                date: item.kind === "timeseries"
+                  ? (kv.d || kv.y
+                     || item.timeseries?.default_date
+                     || item.timeseries?.dates?.[item.timeseries.dates.length - 1])
                   : null,
                 mode: (item.kind === "multiband" || item.default_mode) ? (item.default_mode || "rgb") : null,
                 bidx: (item.kind === "multiband" || item.default_bidx) ? (item.default_bidx || [1, 2, 3]).slice() : null,
+                anim: { playing: false, stepMs: 1000, loop: true },
               };
               state.active.push(lyr); // preserve saved order (top of hash = top of stack)
               addMapLayer(lyr);

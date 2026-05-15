@@ -271,7 +271,10 @@ function buildTimeseriesFromItems(items) {
     granularity: "yearly",
     dates: years.map(String),
     url_template: tmpl,
-    default_date: String(firstYear),
+    // Latest year — matches the fast-path builder. The variable named
+    // `firstYear` is just the first one we encountered while iterating items
+    // to derive the URL template; it's not a default in any product sense.
+    default_date: String(years[years.length - 1]),
   };
 }
 

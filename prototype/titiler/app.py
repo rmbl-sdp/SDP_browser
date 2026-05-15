@@ -62,7 +62,15 @@ async def add_cache_headers(request, call_next):
     """Add Cache-Control to tile responses so the browser caches them."""
     response = await call_next(request)
     if "/tiles/" in request.url.path:
-        response.headers["Cache-Control"] = "public, max-age=86400"
+        # 30 days + immutable on 2xx ONLY. Year-keyed COGs are immutable and
+        # restyling changes the URL, so the long TTL is safe for cache hits.
+        # Errors (404 out-of-bounds, 500 server errors) get no-store so a
+        # transient failure doesn't lock a broken response in the browser
+        # cache for 30 days.
+        if 200 <= response.status_code < 300:
+            response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-store"
     return response
 
 cog = TilerFactory(reader=SDPReader)
