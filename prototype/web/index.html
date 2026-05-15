@@ -312,17 +312,27 @@
         font-size: 12px; box-sizing: border-box;
       }
       .act-body input[type="range"] { width: 100%; }
-      .act-advanced {
+      .act-advanced, .act-animation {
         margin-top: 8px;
         border-top: 1px dashed var(--border);
         padding-top: 6px;
       }
-      .act-advanced summary {
+      .act-advanced summary, .act-animation summary {
         font-size: 11px; color: var(--muted);
         cursor: pointer; user-select: none;
         margin-bottom: 6px;
       }
-      .act-advanced summary:hover { color: var(--text); }
+      .act-advanced summary:hover, .act-animation summary:hover { color: var(--text); }
+      .cmap-row {
+        display: flex; gap: 8px; align-items: center;
+      }
+      .cmap-row > :first-child { flex: 1; min-width: 0; }
+      .cmap-invert-row {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 11px; color: var(--text);
+        cursor: pointer; white-space: nowrap;
+      }
+      .cmap-invert-row input { margin: 0; }
 
       .cmap-picker { position: relative; }
       .cmap-picker-btn {
@@ -1177,7 +1187,7 @@
         "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026/FeatureServer/14";
       const AGOL_RESEARCHER_FIELD = "Researcher";
       const SINGLEBAND_CMAPS = [
-        "viridis","magma","inferno","cividis","terrain",
+        "viridis","magma","inferno","cividis","turbo","terrain",
         "rdbu","rdbu_r","spectral","greys","ylgnbu",
       ];
       const CATEGORICAL_CMAPS = [
@@ -1262,6 +1272,11 @@
         magma:   ["#000004","#180f3d","#440f76","#721f81","#9e2f7f","#cd4071","#f1605d","#fd9668","#fec98d","#fcfdbf"],
         inferno: ["#000004","#1b0c41","#4a0c6b","#781c6d","#a52c60","#cf4446","#ed6925","#fb9b06","#f7d13d","#fcffa4"],
         cividis: ["#00224e","#123570","#3b496c","#575d6d","#707173","#8a8678","#a59c74","#c3b369","#e1cc55","#fee838"],
+        // Google's "Turbo" colormap (Mikhail Solovyov / Anton Mikhailov). Stops
+        // sampled at indices 0/32/64/96/128/160/192/224/255 of the canonical
+        // 256-entry table for a faithful gradient preview; TiTiler renders the
+        // actual tiles using its built-in turbo colormap.
+        turbo:   ["#30123b","#466be3","#1fc9eb","#0bff87","#85ff2e","#ffd51e","#ff7120","#ee2634","#7a0403"],
         terrain: ["#333399","#0066cc","#00ccff","#66ff66","#ccff66","#ffff66","#cc9966","#996633","#ffffff"],
         rdbu:    ["#67001f","#b2182b","#d6604d","#f4a582","#fddbc7","#f7f7f7","#d1e5f0","#92c5de","#4393c3","#2166ac","#053061"],
         rdbu_r:  ["#053061","#2166ac","#4393c3","#92c5de","#d1e5f0","#f7f7f7","#fddbc7","#f4a582","#d6604d","#b2182b","#67001f"],
@@ -1369,6 +1384,16 @@
         if (item.kind === "rgb") return { bidx: item.bidx || [1, 2, 3], useColormap: false };
         return { bidx: [], useColormap: true };
       }
+      // Apply the per-layer "Invert color ramp" toggle: matplotlib/rio-tiler
+      // colormaps accept a "_r" suffix to reverse. Toggling strips or adds it
+      // so users can flip any colormap; e.g. an inverted rdbu_r becomes rdbu.
+      function colormapName(lyr) {
+        const c = lyr?.colormap;
+        if (!c) return null;
+        if (!lyr.invertColormap) return c;
+        return c.endsWith("_r") ? c.slice(0, -2) : `${c}_r`;
+      }
+
       function tileUrl(lyr) {
         const item = catalogItem(lyr.catalogId);
         const u = new URL(`${TITILER}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png`);
@@ -1376,7 +1401,7 @@
         u.searchParams.set("rescale", rescaleToRaw(lyr.rescale, item));
         const spec = renderSpec(lyr, item);
         spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
-        if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", lyr.colormap);
+        if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", colormapName(lyr));
         if (item._nodata != null) u.searchParams.set("nodata", item._nodata);
         return u.toString().replace(/%7B/g, "{").replace(/%7D/g, "}");
       }
@@ -2747,7 +2772,7 @@
         u.searchParams.set("rescale", rescaleToRaw(lyr.rescale, item));
         const spec = renderSpec(lyr, item);
         spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
-        if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", lyr.colormap);
+        if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", colormapName(lyr));
         if (item._nodata != null) u.searchParams.set("nodata", item._nodata);
         return u.toString().replace(/%7B/g, "{").replace(/%7D/g, "}");
       }
@@ -3042,11 +3067,15 @@
           isMb &&
           (item.bands?.length === 4 || item.bands?.length === 5) &&
           typeof item.scale === "number";
-        const cmapGradient = (name) => `linear-gradient(to right, ${(COLORMAPS[name] || COLORMAPS.viridis).join(",")})`;
+        const cmapGradient = (name, reversed = false) => {
+          const stops = COLORMAPS[name] || COLORMAPS.viridis;
+          const ordered = reversed ? [...stops].reverse() : stops;
+          return `linear-gradient(to right, ${ordered.join(",")})`;
+        };
         const cmapPickerHTML = isRgbLike
           ? `<div class="cmap-picker-btn" disabled style="background:#333942;">(RGB composite)<span class="chev"></span></div>`
           : `<div class="cmap-picker" data-k="cmapPicker">
-              <div class="cmap-picker-btn" style="background:${cmapGradient(lyr.colormap)};">
+              <div class="cmap-picker-btn" style="background:${cmapGradient(lyr.colormap, lyr.invertColormap)};">
                 <span>${lyr.colormap}</span><span class="chev">▾</span>
               </div>
               <div class="cmap-picker-menu">
@@ -3055,6 +3084,11 @@
                 ).join("")}
               </div>
             </div>`;
+        const invertCmapHTML = isRgbLike ? "" : `
+          <label class="cmap-invert-row">
+            <input data-k="invertColormap" type="checkbox" ${lyr.invertColormap ? "checked" : ""} />
+            <span>Invert</span>
+          </label>`;
         const bandOpts = (selected) => item.bands?.map(
           (b) => `<option value="${b.idx}" ${+b.idx === +selected ? "selected" : ""}>${b.idx}: ${b.name}</option>`
         ).join("") || "";
@@ -3104,33 +3138,42 @@
         // Strip the inline presets from bandBlock (they're now top-level).
         const cleanBandBlock = bandBlock.replace(/<label>Presets<\/label>[\s\S]*?<\/div>/, "");
 
+        // Animation now lives in its own collapsible <details>, separate from
+        // Advanced styling. Both default closed and persist their open state
+        // on the layer (advancedOpen / animationOpen) across renderActive
+        // rebuilds that fire on each animation frame.
+        const animationBlock =
+          (isTs && item.timeseries && item.timeseries.dates.length > 1)
+            ? (() => {
+                const a = lyr.anim || { playing: false, stepMs: 1000, loop: true };
+                const playLabel = a.playing ? "⏸ Pause" : "▶ Play";
+                return `
+                  <details class="act-animation"${lyr.animationOpen ? " open" : ""}>
+                    <summary>Animation</summary>
+                    <div class="anim-row">
+                      <button data-k="animToggle" class="dl-btn" style="flex: 0 0 72px;">${playLabel}</button>
+                      <span class="anim-speed-lbl">Speed</span>
+                      <input data-k="animSpeed" type="range" min="200" max="3000" step="100"
+                             value="${a.stepMs}" style="flex: 1; min-width: 0;" />
+                      <span data-k="animSpeedDisp" class="anim-speed-disp">${(a.stepMs/1000).toFixed(1)}s</span>
+                    </div>
+                    <div class="anim-checks">
+                      <label><input data-k="animLoop" type="checkbox" ${a.loop !== false ? "checked" : ""} /> Loop</label>
+                      <label><input data-k="animFade" type="checkbox" ${a.fade ? "checked" : ""} /> Fade</label>
+                      <label><input data-k="animDisplayDate" type="checkbox" ${a.displayDate ? "checked" : ""} /> Date overlay</label>
+                    </div>
+                  </details>`;
+              })()
+            : "";
+
         return `<div class="act-body">
           ${isTs && item.timeseries ? renderTimeseriesControlHTML(lyr, item) : ""}
           ${presetsBlock}
-          ${showCmapTopLevel ? `<label>Colormap</label>${cmapPickerHTML}` : ""}
+          ${showCmapTopLevel ? `<label>Colormap</label><div class="cmap-row">${cmapPickerHTML}${invertCmapHTML}</div>` : ""}
           <details class="act-advanced"${lyr.advancedOpen ? " open" : ""}>
             <summary>Advanced styling</summary>
             ${cleanBandBlock}
-            ${showCmapTopLevel ? "" : `<label>Colormap</label>${cmapPickerHTML}`}
-            ${(isTs && item.timeseries && item.timeseries.dates.length > 1) ? (() => {
-              const a = lyr.anim || { playing: false, stepMs: 1000, loop: true };
-              const playLabel = a.playing ? "⏸ Pause" : "▶ Play";
-              return `
-                <label>Animation</label>
-                <div class="anim-row">
-                  <button data-k="animToggle" class="dl-btn" style="flex: 0 0 72px;">${playLabel}</button>
-                  <span class="anim-speed-lbl">Speed</span>
-                  <input data-k="animSpeed" type="range" min="200" max="3000" step="100"
-                         value="${a.stepMs}" style="flex: 1; min-width: 0;" />
-                  <span data-k="animSpeedDisp" class="anim-speed-disp">${(a.stepMs/1000).toFixed(1)}s</span>
-                </div>
-                <div class="anim-checks">
-                  <label><input data-k="animLoop" type="checkbox" ${a.loop !== false ? "checked" : ""} /> Loop</label>
-                  <label><input data-k="animFade" type="checkbox" ${a.fade ? "checked" : ""} /> Fade</label>
-                  <label><input data-k="animDisplayDate" type="checkbox" ${a.displayDate ? "checked" : ""} /> Date overlay</label>
-                </div>
-              `;
-            })() : ""}
+            ${showCmapTopLevel ? "" : `<label>Colormap</label><div class="cmap-row">${cmapPickerHTML}${invertCmapHTML}</div>`}
             <label>Rescale (min,max)</label>
             <div style="display: flex; gap: 4px;">
               <input data-k="rescale" type="text" value="${lyr.rescale}" style="flex: 1; min-width: 0;" />
@@ -3140,6 +3183,7 @@
             <label>Opacity <span class="value">${Math.round(lyr.opacity * 100)}%</span></label>
             <input data-k="opacity" type="range" min="0" max="100" value="${Math.round(lyr.opacity * 100)}" />
           </details>
+          ${animationBlock}
         </div>`;
       }
 
@@ -3147,11 +3191,15 @@
         const body = rootEl.querySelector(".act-body");
         body.addEventListener("click", (ev) => ev.stopPropagation());
 
-        // Persist the Advanced-styling panel's open/closed state across the
-        // renderActive() rebuilds that fire on every animation tick.
+        // Persist the Advanced-styling and Animation panel open/closed state
+        // across the renderActive() rebuilds that fire on every animation tick.
         const advDetails = body.querySelector(".act-advanced");
         advDetails?.addEventListener("toggle", () => {
           lyr.advancedOpen = advDetails.open;
+        });
+        const animDetails = body.querySelector(".act-animation");
+        animDetails?.addEventListener("toggle", () => {
+          lyr.animationOpen = animDetails.open;
         });
 
         const reRenderRow = () => {
@@ -3242,6 +3290,13 @@
             });
           });
         }
+        body.querySelector('[data-k="invertColormap"]')?.addEventListener("change", (e) => {
+          lyr.invertColormap = e.target.checked;
+          // Toggling inversion is a restyle: stop any active animation so the
+          // user isn't surprised by a mid-flight tile-key swap, then re-render
+          // tiles + the panel so the picker swatch reflects the new direction.
+          reRenderRow();
+        });
         body.querySelector('[data-k="rescale"]')?.addEventListener("change", (e) => {
           lyr.rescale = e.target.value;
           reloadMapLayer(lyr);
@@ -3708,7 +3763,7 @@
           u.searchParams.set("rescale", rescaleToRaw(lyr.rescale, item));
           const spec = renderSpec(lyr, item);
           spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
-          if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", lyr.colormap);
+          if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", colormapName(lyr));
         }
 
         const info = document.getElementById("dlInfo");
