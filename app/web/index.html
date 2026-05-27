@@ -4760,10 +4760,11 @@ message("Saved to ${outName}")
         const onMapReady = () => {
           ensureReferenceLayer();
           if (saved.layers.length) {
-            // Build each layer with its saved settings up front, then add once.
-            // Using addActive + reloadMapLayer here would cause a tile flash
-            // because the swap removes the default-styled layer before
-            // re-adding it with the correct styling.
+            // Build each layer with its saved settings up front, mark them
+            // _pending, then probe + paint once (below). Using addActive +
+            // reloadMapLayer here would cause a tile flash because the swap
+            // removes the default-styled layer before re-adding it.
+            const restored = [];
             saved.layers.forEach((kv) => {
               const item = catalogItem(kv.id); if (!item) return;
               if (state.active.some((l) => l.catalogId === item.id)) return;
@@ -4782,13 +4783,26 @@ message("Saved to ${outName}")
                 mode: (item.kind === "multiband" || item.default_mode) ? (item.default_mode || "rgb") : null,
                 bidx: (item.kind === "multiband" || item.default_bidx) ? (item.default_bidx || [1, 2, 3]).slice() : null,
                 anim: { playing: false, stepMs: 1000, loop: true },
+                _pending: true, // tiles deferred until probeCogInfo resolves
               };
               state.active.push(lyr); // preserve saved order (top of hash = top of stack)
-              addMapLayer(lyr);
               if (kv.e === "1") state.expandedUid = lyr.uid;
+              restored.push(lyr);
             });
-            reorderMapLayers();
-            ensureAoiOnTop();
+            // Probe band-count + scale/nodata BEFORE painting tiles, mirroring
+            // addActive's ordering. A physical-unit rescale restored from the
+            // hash (e.g. multispectral "0,0.3" reflectance) needs item._scale —
+            // set by this probe — so tileUrl can convert it to raw DN. Painting
+            // first (the old behavior) sent "0,0.3" raw against 0–10000 DN and
+            // rendered nearly white. Auto-rescale stays skipped: the hash
+            // already carries the rescale; we only need the scale factor.
+            (async () => {
+              await Promise.all(restored.map((lyr) => probeCogInfo(lyr)));
+              restored.forEach((lyr) => { delete lyr._pending; addMapLayer(lyr); });
+              reorderMapLayers();
+              ensureAoiOnTop();
+              renderAll();
+            })();
           }
 
           // If no layers were restored from the hash, add the landcover
@@ -4832,13 +4846,10 @@ message("Saved to ${outName}")
           // initial view has been applied.
           map.on("moveend", updateHash);
 
-          // Reconcile descriptors against actual COG band counts (STAC can
-          // under-report). Runs in the background after layers are on screen.
-          // Reconcile descriptors against actual COG band counts (STAC can
-          // under-report). Runs in the background after layers are on screen.
-          // Auto-rescale is NOT re-run here — the hash carries the rescale
-          // from the previous session. Only addActive runs autoRescale.
-          state.active.forEach((l) => probeCogInfo(l));
+          // Note: restored layers are probed (band-count + scale/nodata) in the
+          // deferred block above before their tiles paint; #add and the default
+          // landcover go through addActive, which probes too. Auto-rescale is
+          // NOT re-run for restored layers — the hash carries the rescale.
         };
         if (map.loaded()) onMapReady(); else map.on("load", onMapReady);
       })();
