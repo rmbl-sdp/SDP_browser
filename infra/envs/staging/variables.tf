@@ -61,11 +61,25 @@ variable "task_memory" {
 }
 
 variable "desired_count" {
-  type    = number
-  default = 1
+  description = "Autoscaling floor (min running tasks)."
+  type        = number
+  default     = 1
 }
 
 variable "max_count" {
-  type    = number
-  default = 4
+  description = "Autoscaling ceiling (max running tasks)."
+  type        = number
+  default     = 4
+}
+
+variable "cpu_autoscale_target" {
+  description = "Average-CPU target (percent) that triggers scale-out."
+  type        = number
+  default     = 60
+}
+
+variable "waf_rate_limit_per_5min" {
+  description = "WAF requests per 5-minute window per IP before blocking."
+  type        = number
+  default     = 10000
 }

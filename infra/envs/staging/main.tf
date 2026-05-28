@@ -66,8 +66,9 @@ module "alb_api" {
 }
 
 module "waf" {
-  source      = "../../modules/waf"
-  name_prefix = var.name_prefix
+  source              = "../../modules/waf"
+  name_prefix         = var.name_prefix
+  rate_limit_per_5min = var.waf_rate_limit_per_5min
   providers = {
     aws.us_east_1 = aws.us_east_1
   }
@@ -92,6 +93,7 @@ module "ecs_titiler" {
   memory                            = var.task_memory
   desired_count                     = var.desired_count
   max_count                         = var.max_count
+  cpu_autoscale_target              = var.cpu_autoscale_target
   health_check_grace_period_seconds = 120
   region                            = var.aws_region
   private_subnet_ids                = module.network.private_subnet_ids
