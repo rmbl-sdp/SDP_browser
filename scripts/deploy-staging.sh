@@ -120,15 +120,22 @@ if [[ "$MODE" == "full" || "$MODE" == "image" ]]; then
   echo "→ Updating ECS task definition..."
   cd "$TF_DIR"
   terraform apply -auto-approve -var "container_image_tag=$TAG" | tail -3
+  # Capture the ARN of the task-def revision Terraform just registered. The
+  # service has `ignore_changes = [task_definition]` so Terraform won't repoint
+  # it on apply — we must hand the new revision to update-service explicitly.
+  # `--force-new-deployment` alone redeploys the service's currently-pinned
+  # revision (a known footgun: deploys silently re-pull the old image).
+  TASK_DEF_ARN="$(terraform output -raw ecs_task_definition_arn)"
   cd - > /dev/null
 
-  echo "→ Forcing new ECS deployment..."
+  echo "→ Deploying task definition $TASK_DEF_ARN ..."
   aws ecs update-service \
     --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+    --task-definition "$TASK_DEF_ARN" \
     --force-new-deployment \
     --profile "$AWS_PROFILE" --region "$AWS_REGION" \
     --query 'service.status' --output text
-  echo "→ Waiting for ECS stability (2-3 min)..."
+  echo "→ Waiting for ECS stability (2-3 min; circuit breaker auto-rolls-back on failure)..."
   aws ecs wait services-stable \
     --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
     --profile "$AWS_PROFILE" --region "$AWS_REGION"

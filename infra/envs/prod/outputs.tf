@@ -10,6 +10,10 @@ output "ecs_service_name" {
   value = module.ecs_titiler.service_name
 }
 
+output "ecs_task_definition_arn" {
+  value = module.ecs_titiler.task_definition_arn
+}
+
 output "api_distribution_id" {
   value = module.cloudfront_api.distribution_id
 }

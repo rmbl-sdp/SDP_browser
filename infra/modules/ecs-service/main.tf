@@ -115,6 +115,14 @@ resource "aws_ecs_service" "this" {
     container_port   = var.container_port
   }
 
+  # Auto-roll-back a deployment that never reaches a steady state (e.g. a bad
+  # image fails ALB health checks). Without this, a failed rollout leaves the
+  # service stuck deploying instead of reverting to the last good task def.
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   lifecycle {
     # GitHub Actions updates the service (and may bump the image tag) outside
     # Terraform on every deploy — don't thrash it on subsequent `apply`s.

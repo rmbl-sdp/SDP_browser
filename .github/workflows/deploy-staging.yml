@@ -96,13 +96,21 @@ jobs:
             echo "api_domain=$(terraform output -raw api_distribution_domain)"
             echo "cluster=$(terraform output -raw ecs_cluster_name)"
             echo "service=$(terraform output -raw ecs_service_name)"
+            echo "task_def=$(terraform output -raw ecs_task_definition_arn)"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Force new ECS deployment
+      # The service has `ignore_changes = [task_definition]` so Terraform won't
+      # repoint it on apply — pass the freshly-registered revision explicitly.
+      # `--force-new-deployment` alone redeploys whatever revision the service
+      # was last pinned to (a known footgun: silent re-pull of the old image).
+      # Deployment circuit breaker (set in the ecs-service module) auto-rolls
+      # back if the new image fails health checks.
+      - name: Deploy new ECS task definition
         run: |
           aws ecs update-service \
             --cluster "${{ steps.tf.outputs.cluster }}" \
             --service "${{ steps.tf.outputs.service }}" \
+            --task-definition "${{ steps.tf.outputs.task_def }}" \
             --force-new-deployment
           aws ecs wait services-stable \
             --cluster "${{ steps.tf.outputs.cluster }}" \
