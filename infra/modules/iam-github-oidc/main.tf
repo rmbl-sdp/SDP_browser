@@ -150,3 +150,14 @@ resource "aws_iam_role_policy" "deploy" {
     Statement = local.statements
   })
 }
+
+# Terraform's refresh phase reads every resource in the stack (VPC, IAM, EC2,
+# WAF, ECR, ECS, CloudFront, ACM, autoscaling, logs, …) just to compute a plan.
+# The inline write policy above is intentionally narrow; attaching the AWS-
+# managed ReadOnlyAccess closes the read gap without us having to enumerate
+# every Describe/Get/List action and re-touch IAM whenever a new module is
+# added. Mutations remain scoped to the inline policy.
+resource "aws_iam_role_policy_attachment" "deploy_read" {
+  role       = aws_iam_role.deploy.name
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
