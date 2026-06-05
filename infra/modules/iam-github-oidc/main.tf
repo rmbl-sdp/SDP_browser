@@ -69,12 +69,15 @@ locals {
       Action = [
         "ecs:UpdateService",
         "ecs:DescribeServices",
+        "ecs:TagResource",
+        "ecs:UntagResource",
       ]
       Resource = var.ecs_service_arns
     }] : [],
     # Task-definition lifecycle: ECS task-def APIs don't support resource-level
     # permissions, so Resource must be "*". Terraform replaces the task def
-    # on every image change (new revision registered, old one deregistered).
+    # on every image change (new revision registered, old one deregistered) and
+    # applies the project's default_tags to each new revision via TagResource.
     length(var.ecs_service_arns) > 0 ? [{
       Sid    = "ECSTaskDef"
       Effect = "Allow"
@@ -82,6 +85,9 @@ locals {
         "ecs:RegisterTaskDefinition",
         "ecs:DescribeTaskDefinition",
         "ecs:DeregisterTaskDefinition",
+        "ecs:TagResource",
+        "ecs:UntagResource",
+        "ecs:ListTagsForResource",
       ]
       Resource = "*"
     }] : [],
