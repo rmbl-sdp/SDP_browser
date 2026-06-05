@@ -64,15 +64,26 @@ locals {
       Resource = "*"
     }] : [],
     length(var.ecs_service_arns) > 0 ? [{
-      Sid    = "ECSUpdate"
+      Sid    = "ECSService"
       Effect = "Allow"
       Action = [
         "ecs:UpdateService",
         "ecs:DescribeServices",
-        "ecs:DescribeTaskDefinition",
-        "ecs:RegisterTaskDefinition",
       ]
       Resource = var.ecs_service_arns
+    }] : [],
+    # Task-definition lifecycle: ECS task-def APIs don't support resource-level
+    # permissions, so Resource must be "*". Terraform replaces the task def
+    # on every image change (new revision registered, old one deregistered).
+    length(var.ecs_service_arns) > 0 ? [{
+      Sid    = "ECSTaskDef"
+      Effect = "Allow"
+      Action = [
+        "ecs:RegisterTaskDefinition",
+        "ecs:DescribeTaskDefinition",
+        "ecs:DeregisterTaskDefinition",
+      ]
+      Resource = "*"
     }] : [],
     length(var.ecs_service_arns) > 0 ? [{
       Sid    = "ECSPassRole"
