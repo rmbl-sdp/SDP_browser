@@ -4841,13 +4841,15 @@ message("Saved to ${outName}")
             populateResearcherChoices(),
             populateDataCollectionPlans(),
           ]);
-          // Auto-enable the layer on first sign-in for less click friction.
-          myToggle.checked = true;
-          state.mySitesOn = true;
-          ensureMySitesLayers();
-          await loadMySites();
-          setMySitesVisibility(true);
-          ensureMySitesOnTop();
+          // Auto-enable the 2026 live overlay on first sign-in for less click
+          // friction — most signed-in users are field collectors looking at
+          // this year's data. The 2025 curated layer stays off until ticked.
+          dcToggle.checked = true;
+          state.dataCollectionOn = true;
+          ensureDataCollectionLayers();
+          await loadDataCollection();
+          setDataCollectionVisibility(true);
+          ensureDataCollectionOnTop();
         } catch (err) {
           console.error("AGOL sign-in failed", err);
           myStatus.textContent = `sign-in failed: ${err.message || err}`;
