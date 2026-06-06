@@ -4896,16 +4896,29 @@ message("Saved to ${outName}")
         if (state.dataCollectionOn) await loadDataCollection();
       });
 
-      // On load, restore prior sign-in if the session token is still valid.
-      // We do not auto-load the layer; the user must tick the checkbox.
+      // On load, restore prior sign-in if the session token is still valid,
+      // and auto-load the 2026 live overlay (same rationale as the post-sign-in
+      // default) so a refresh of an active session doesn't require re-ticking.
+      // The 2025 curated layer stays unchecked until ticked. Map-touching calls
+      // are gated on the style being loaded, because this IIFE runs at
+      // script-load time and addSource/addLayer fail before that.
       (() => {
         const tok = getStoredToken();
-        if (tok) {
-          state.agolToken = tok;
-          setMyAuthUI(tok);
-          populateResearcherChoices();
-          populateDataCollectionPlans();
-        }
+        if (!tok) return;
+        state.agolToken = tok;
+        setMyAuthUI(tok);
+        populateResearcherChoices();
+        populateDataCollectionPlans();
+        const restoreDcLayer = async () => {
+          dcToggle.checked = true;
+          state.dataCollectionOn = true;
+          ensureDataCollectionLayers();
+          await loadDataCollection();
+          setDataCollectionVisibility(true);
+          ensureDataCollectionOnTop();
+        };
+        if (map.loaded()) restoreDcLayer();
+        else map.on("load", restoreDcLayer);
       })();
 
       async function loadCatalog({ force = false } = {}) {
