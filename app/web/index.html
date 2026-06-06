@@ -1143,6 +1143,11 @@
               ></span
               ><span id="mySitesStatus" style="color: var(--muted); font-size: 10px;"></span
             ></span>
+            <span id="dataCollectionGroup" class="my-sites-group" hidden
+              ><label><input type="checkbox" id="dataCollectionToggle" disabled />Data Collection</label
+              ><select id="dataCollectionPlan" title="Filter by Research Plan" disabled><option value="">All plans</option></select
+              ><span id="dataCollectionStatus" style="color: var(--muted); font-size: 10px;"></span
+            ></span>
           </span>
         </div>
         <div id="mapLegend" class="empty"></div>
@@ -1210,6 +1215,12 @@
       import { loadRepo, makeInMemoryRepo, stacBrowserLink, invalidateCache, resolveTimeseriesUrl, formatDateLabel } from "./js/catalog-static.js";
       import { signIn, getStoredToken, clearToken } from "./js/agol-auth.js";
       import { fetchPrivateSites, fetchDistinctValues, buildWhereForValue } from "./js/sites-private.js";
+      import {
+        fetchDataCollections,
+        fetchDistinctValuesUnion,
+        buildWhereForValue as dcWhereForValue,
+        pointToBufferPolygon,
+      } from "./js/data-collection.js";
 
       const SDP_CONFIG = (typeof window !== "undefined" && window.__SDP_CONFIG__) || {};
       const STAC_ROOT = SDP_CONFIG.STAC_ROOT || "https://rmbl-sdp.s3.us-east-2.amazonaws.com/stac/v1/catalog.json";
@@ -1222,6 +1233,22 @@
       const AGOL_PRIVATE_SITES_URL = SDP_CONFIG.AGOL_PRIVATE_SITES_URL
         || "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026/FeatureServer/14";
       const AGOL_RESEARCHER_FIELD = SDP_CONFIG.AGOL_RESEARCHER_FIELD || "Researcher";
+
+      // Authenticated "Data Collection 2026" overlay: three sibling FeatureServers
+      // (Point / Line / Polygon) on the same AGOL org as ResearchSites_2026,
+      // each as a single-layer service at /0. Override any of these via
+      // window.__SDP_CONFIG__ in app/web/config.js. POINT_BUFFER_M is the
+      // default radius used to materialize a Point click as an AOI polygon —
+      // sub-meter handheld GPS makes 1 m a meaningful baseline for the finest-
+      // resolution drone products. Coarser SDP rasters will report few valid
+      // pixels at that radius; users can resize per-feature via the AOI panel.
+      const AGOL_DATA_COLLECTION_URLS = SDP_CONFIG.AGOL_DATA_COLLECTION_URLS || {
+        point:   "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/Point_Collection_2026/FeatureServer/0",
+        line:    "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/Line_Collection_2026/FeatureServer/0",
+        polygon: "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/Polygon_Collection_2026/FeatureServer/0",
+      };
+      const AGOL_DATA_COLLECTION_PLAN_FIELD = SDP_CONFIG.AGOL_DATA_COLLECTION_PLAN_FIELD || "Research_Plan";
+      const AGOL_DATA_COLLECTION_POINT_BUFFER_M = SDP_CONFIG.AGOL_DATA_COLLECTION_POINT_BUFFER_M ?? 1;
       const SINGLEBAND_CMAPS = [
         "viridis","magma","inferno","cividis","turbo","terrain",
         "rdbu","rdbu_r","spectral","greys","ylgnbu",
@@ -1255,6 +1282,11 @@
         agolToken: null,
         myResearcher: "", // "" means show all
         myResearcherChoices: null,
+        // Data Collection 2026 overlay (points/lines/polygons in one source).
+        dataCollectionOn: false,
+        dataCollectionData: null,
+        dataCollectionPlan: "", // "" means show all plans
+        dataCollectionPlanChoices: null,
       };
       let nextUid = 1;
       let dragUid = null;
@@ -1670,6 +1702,7 @@
         });
         ensureSitesOnTop();
         ensureMySitesOnTop();
+        ensureDataCollectionOnTop();
       }
 
       // -------- RMBL research sites (classic ArcGIS FeatureServer) --------
@@ -1815,6 +1848,18 @@
       }
 
       function useFeatureAsAoi(feature, clickPt) {
+        // Points have no area: a raw bbox would be [lng,lat,lng,lat] and would
+        // produce a zero-area AOI with no valid pixels. Buffer to a small
+        // polygon instead. Also retroactively makes point clicks in the
+        // existing public + private Research Sites overlays produce a usable
+        // AOI rather than failing silently.
+        if (feature?.geometry?.type === "Point") {
+          const [lng, lat] = feature.geometry.coordinates;
+          if (!isFinite(lng) || !isFinite(lat)) return;
+          setAoi(pointToBufferPolygon(lng, lat, AGOL_DATA_COLLECTION_POINT_BUFFER_M));
+          fetchStats();
+          return;
+        }
         const coords = coordsForClick(feature.geometry, clickPt);
         const [minx, miny, maxx, maxy] = coordsBBox(coords);
         if (![minx, miny, maxx, maxy].every(isFinite)) return;
@@ -1907,6 +1952,84 @@
       }
       function setMySitesVisibility(on) {
         MY_LAYER_IDS.forEach((id) => {
+          if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+        });
+      }
+
+      // -------- Authenticated "Data Collection 2026" layers (3 AGOL items in
+      //          one MapLibre source, tagged via properties._collection) --------
+      const DC_COLOR = "#F5A33C"; // warm orange, distinct from MY_SITES_COLOR cyan
+      const DC_LAYER_IDS = ["dc-fill", "dc-line", "dc-point"];
+
+      function ensureDataCollectionLayers() {
+        if (map.getSource("data-collection")) return;
+        map.addSource("data-collection", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addLayer({
+          id: "dc-fill", type: "fill", source: "data-collection",
+          filter: ["==", ["geometry-type"], "Polygon"],
+          paint: { "fill-color": DC_COLOR, "fill-opacity": 0.18 },
+          layout: { visibility: state.dataCollectionOn ? "visible" : "none" },
+        });
+        map.addLayer({
+          id: "dc-line", type: "line", source: "data-collection",
+          filter: ["!=", ["geometry-type"], "Point"],
+          paint: { "line-color": DC_COLOR, "line-width": 2 },
+          layout: { visibility: state.dataCollectionOn ? "visible" : "none" },
+        });
+        map.addLayer({
+          id: "dc-point", type: "circle", source: "data-collection",
+          filter: ["==", ["geometry-type"], "Point"],
+          paint: {
+            "circle-radius": 5,
+            "circle-color": DC_COLOR,
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 1.5,
+          },
+          layout: { visibility: state.dataCollectionOn ? "visible" : "none" },
+        });
+        // Popup + "Use as AOI" behavior — same shape as my-sites; Points are
+        // handled by useFeatureAsAoi via the defensive buffer branch added
+        // above, so all three geometry types route through a single call.
+        DC_LAYER_IDS.forEach((id) => {
+          map.on("click", id, (e) => {
+            const f = e.features?.[0]; if (!f) return;
+            const props = f.properties || {};
+            const name =
+              props.Name || props.NAME || props.name ||
+              props.Plot_Name || props.PlotName ||
+              props.Research_Plan || "Data Collection feature";
+            const rows = Object.entries(props)
+              .filter(([k, v]) => v != null && v !== "" &&
+                                  k.toLowerCase() !== "name" &&
+                                  !k.startsWith("_"))
+              .slice(0, 10)
+              .map(([k, v]) => `<dt>${k}</dt><dd>${String(v)}</dd>`).join("");
+            const html =
+              `<div class="site-popup">
+                 <h4>${name}</h4>
+                 <dl>${rows}</dl>
+                 <button class="popup-aoi">Use as AOI</button>
+               </div>`;
+            const popup = new maplibregl.Popup({ closeOnClick: true })
+              .setLngLat(e.lngLat).setHTML(html).addTo(map);
+            const btn = popup.getElement()?.querySelector(".popup-aoi");
+            btn?.addEventListener("click", () => {
+              useFeatureAsAoi(f, [e.lngLat.lng, e.lngLat.lat]);
+              popup.remove();
+            });
+          });
+          map.on("mouseenter", id, () => (map.getCanvas().style.cursor = "pointer"));
+          map.on("mouseleave", id, () => (map.getCanvas().style.cursor = ""));
+        });
+      }
+      function ensureDataCollectionOnTop() {
+        DC_LAYER_IDS.forEach((id) => { if (map.getLayer(id)) map.moveLayer(id); });
+      }
+      function setDataCollectionVisibility(on) {
+        DC_LAYER_IDS.forEach((id) => {
           if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
         });
       }
@@ -4476,6 +4599,7 @@ message("Saved to ${outName}")
         setSitesVisibility(state.sitesOn);
         ensureSitesOnTop();
         ensureMySitesOnTop();
+        ensureDataCollectionOnTop();
         setTimeout(() => {
           if (state.sitesOn) status.textContent =
             state.sitesData ? `${state.sitesData.features?.length ?? 0} sites` : "";
@@ -4522,6 +4646,11 @@ message("Saved to ${outName}")
       const myStatus = document.getElementById("mySitesStatus");
       const myUserLbl = document.getElementById("agolUser");
       const mySignedBlock = document.getElementById("agolSignedInBlock");
+      // Data Collection group (parallel UI, same OAuth token).
+      const dcGroup = document.getElementById("dataCollectionGroup");
+      const dcToggle = document.getElementById("dataCollectionToggle");
+      const dcPlan = document.getElementById("dataCollectionPlan");
+      const dcStatus = document.getElementById("dataCollectionStatus");
 
       function setMyAuthUI(tok) {
         const signedIn = !!tok;
@@ -4529,6 +4658,10 @@ message("Saved to ${outName}")
         mySignedBlock.hidden = !signedIn;
         myToggle.disabled = !signedIn;
         myUserLbl.textContent = signedIn && tok.username ? tok.username : "";
+        // Data Collection group: only meaningful when signed in.
+        dcGroup.hidden = !signedIn;
+        dcToggle.disabled = !signedIn;
+        dcPlan.disabled = !signedIn;
         if (!signedIn) {
           myToggle.checked = false;
           state.mySitesOn = false;
@@ -4540,6 +4673,18 @@ message("Saved to ${outName}")
           setMySitesVisibility(false);
           myFilter.innerHTML = '<option value="">All researchers</option>';
           myStatus.textContent = "";
+          // Same reset for the Data Collection overlay.
+          dcToggle.checked = false;
+          state.dataCollectionOn = false;
+          state.dataCollectionData = null;
+          state.dataCollectionPlan = "";
+          state.dataCollectionPlanChoices = null;
+          if (map.getSource("data-collection")) {
+            map.getSource("data-collection").setData({ type: "FeatureCollection", features: [] });
+          }
+          setDataCollectionVisibility(false);
+          dcPlan.innerHTML = '<option value="">All plans</option>';
+          dcStatus.textContent = "";
         }
       }
 
@@ -4588,6 +4733,57 @@ message("Saved to ${outName}")
         }
       }
 
+      // --- Data Collection 2026 (parallel to the loadMySites/populateResearcherChoices pair) ---
+
+      async function populateDataCollectionPlans() {
+        if (state.dataCollectionPlanChoices || !state.agolToken) return;
+        try {
+          const vals = await fetchDistinctValuesUnion(
+            AGOL_DATA_COLLECTION_URLS,
+            state.agolToken.access_token,
+            AGOL_DATA_COLLECTION_PLAN_FIELD,
+          );
+          state.dataCollectionPlanChoices = vals;
+          dcPlan.innerHTML =
+            '<option value="">All plans</option>' +
+            vals.map((v) => {
+              const safe = v.replace(/"/g, "&quot;").replace(/</g, "&lt;");
+              return `<option value="${safe}">${safe}</option>`;
+            }).join("");
+        } catch (err) {
+          console.warn("Research Plan list load failed", err);
+        }
+      }
+
+      async function loadDataCollection() {
+        if (!state.agolToken) return;
+        dcStatus.textContent = "loading…";
+        const where = dcWhereForValue(AGOL_DATA_COLLECTION_PLAN_FIELD, state.dataCollectionPlan);
+        try {
+          const fc = await fetchDataCollections(
+            AGOL_DATA_COLLECTION_URLS,
+            state.agolToken.access_token,
+            where,
+          );
+          state.dataCollectionData = fc;
+          map.getSource("data-collection").setData(fc);
+          const n = fc.features?.length ?? 0;
+          // If any sibling layer failed (e.g. a researcher only uses points),
+          // surface a quiet hint but don't block the others.
+          dcStatus.textContent = fc.errors?.length
+            ? `${n} features (${fc.errors.length} layer${fc.errors.length > 1 ? "s" : ""} unavailable)`
+            : `${n} features`;
+        } catch (err) {
+          console.error("data collection load failed", err);
+          dcStatus.textContent = "error";
+          if (/\b(498|499|token)\b/i.test(String(err?.message || ""))) {
+            clearToken();
+            state.agolToken = null;
+            setMyAuthUI(null);
+          }
+        }
+      }
+
       mySignIn.addEventListener("click", async () => {
         try {
           mySignIn.disabled = true;
@@ -4595,7 +4791,11 @@ message("Saved to ${outName}")
           const tok = await signIn({ clientId: AGOL_CLIENT_ID, redirectUri });
           state.agolToken = tok;
           setMyAuthUI(tok);
-          await populateResearcherChoices();
+          // Pre-fetch both filter dropdowns in parallel.
+          await Promise.all([
+            populateResearcherChoices(),
+            populateDataCollectionPlans(),
+          ]);
           // Auto-enable the layer on first sign-in for less click friction.
           myToggle.checked = true;
           state.mySitesOn = true;
@@ -4633,6 +4833,22 @@ message("Saved to ${outName}")
         if (state.mySitesOn) await loadMySites();
       });
 
+      dcToggle.addEventListener("change", async (e) => {
+        state.dataCollectionOn = e.target.checked;
+        ensureDataCollectionLayers();
+        if (state.dataCollectionOn && !state.dataCollectionData) {
+          await loadDataCollection();
+        }
+        setDataCollectionVisibility(state.dataCollectionOn);
+        ensureDataCollectionOnTop();
+      });
+
+      dcPlan.addEventListener("change", async (e) => {
+        state.dataCollectionPlan = e.target.value;
+        state.dataCollectionData = null; // refetch with new where clause
+        if (state.dataCollectionOn) await loadDataCollection();
+      });
+
       // On load, restore prior sign-in if the session token is still valid.
       // We do not auto-load the layer; the user must tick the checkbox.
       (() => {
@@ -4641,6 +4857,7 @@ message("Saved to ${outName}")
           state.agolToken = tok;
           setMyAuthUI(tok);
           populateResearcherChoices();
+          populateDataCollectionPlans();
         }
       })();
 

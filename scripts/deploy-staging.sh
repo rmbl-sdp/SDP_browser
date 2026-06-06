@@ -100,6 +100,27 @@ html = re.sub(
     html
 )
 
+# Wrap AGOL_DATA_COLLECTION_URLS (multi-line object literal)
+html = re.sub(
+    r'const AGOL_DATA_COLLECTION_URLS = (\\{[^}]+\\});',
+    r'const AGOL_DATA_COLLECTION_URLS = SDP_CONFIG.AGOL_DATA_COLLECTION_URLS || \\1;',
+    html
+)
+
+# Wrap AGOL_DATA_COLLECTION_PLAN_FIELD
+html = re.sub(
+    r'const AGOL_DATA_COLLECTION_PLAN_FIELD = \"([^\"]+)\";',
+    r'const AGOL_DATA_COLLECTION_PLAN_FIELD = SDP_CONFIG.AGOL_DATA_COLLECTION_PLAN_FIELD || \"\1\";',
+    html
+)
+
+# Wrap AGOL_DATA_COLLECTION_POINT_BUFFER_M (numeric; \?\? guards against 0 override)
+html = re.sub(
+    r'const AGOL_DATA_COLLECTION_POINT_BUFFER_M = (\d+(?:\.\d+)?);',
+    r'const AGOL_DATA_COLLECTION_POINT_BUFFER_M = SDP_CONFIG.AGOL_DATA_COLLECTION_POINT_BUFFER_M ?? \1;',
+    html
+)
+
 with open('app/web/index.html', 'w') as f:
     f.write(html)
 print('  config.js shim applied')
@@ -153,6 +174,13 @@ window.__SDP_CONFIG__ = {
   AGOL_CLIENT_ID: "$AGOL_CLIENT_ID",
   AGOL_PRIVATE_SITES_URL: "$AGOL_PRIVATE_SITES_URL",
   AGOL_RESEARCHER_FIELD: "$AGOL_RESEARCHER_FIELD",
+  AGOL_DATA_COLLECTION_URLS: {
+    point:   "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/Point_Collection_2026/FeatureServer/0",
+    line:    "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/Line_Collection_2026/FeatureServer/0",
+    polygon: "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/Polygon_Collection_2026/FeatureServer/0",
+  },
+  AGOL_DATA_COLLECTION_PLAN_FIELD: "Research_Plan",
+  AGOL_DATA_COLLECTION_POINT_BUFFER_M: 1,
 };
 EOF
 

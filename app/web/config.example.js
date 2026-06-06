@@ -34,4 +34,15 @@ window.__SDP_CONFIG__ = {
   AGOL_CLIENT_ID: "73IpknmLfeXEBLAf",
   AGOL_PRIVATE_SITES_URL: "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/ResearchSites_2026/FeatureServer/14",
   AGOL_RESEARCHER_FIELD: "Researcher",
+
+  // "Data Collection 2026" — three sibling FeatureServers (Point/Line/Polygon)
+  // on the same AGOL org, each as a single-layer service at /0. Same OAuth
+  // token as AGOL_PRIVATE_SITES_URL. Filterable by Research_Plan.
+  AGOL_DATA_COLLECTION_URLS: {
+    point:   "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/Point_Collection_2026/FeatureServer/0",
+    line:    "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/Line_Collection_2026/FeatureServer/0",
+    polygon: "https://services8.arcgis.com/jOS5YDdMN6EQxI1b/arcgis/rest/services/Polygon_Collection_2026/FeatureServer/0",
+  },
+  AGOL_DATA_COLLECTION_PLAN_FIELD: "Research_Plan",
+  AGOL_DATA_COLLECTION_POINT_BUFFER_M: 1,
 };
