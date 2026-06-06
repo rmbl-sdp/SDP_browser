@@ -565,14 +565,11 @@
       #mapCtls.collapsed .mapCtls-min {
         border-right: none; margin: -4px -8px;
       }
-      .my-sites-group {
-        display: inline-flex; align-items: center; gap: 2px;
-        padding-left: 4px; margin-left: 0;
-        border-left: 1px solid var(--border);
-      }
-      .my-sites-group > label,
-      .my-sites-group .link-btn { white-space: nowrap; flex: 0 0 auto; }
-      .my-sites-group label input[disabled] + * { color: var(--muted); }
+      /* mapCtls-body becomes a column so AGOL gets its own row under the
+         compact top row instead of stretching the top horizontally. */
+      .mapCtls-body { display: flex; flex-direction: column; gap: 4px; }
+      .mapCtls-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .agol-header { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
       .link-btn {
         /* Override the global button {} rule (orange bg, full-width, big padding). */
         background: none; border: none; padding: 1px 4px; width: auto;
@@ -581,11 +578,43 @@
         font-family: inherit; text-decoration: underline;
       }
       .link-btn:hover { color: var(--text); background: none; }
-      #researcherFilter {
+      /* Sign-in affordance: subtle button-like border so it reads as a CTA
+         without competing with the colormap legend or layer controls. */
+      .agol-signin-link {
+        text-decoration: none;
+        border: 1px solid var(--border);
+        padding: 2px 8px;
+        border-radius: var(--r-sm);
+      }
+      .agol-signin-link:hover {
+        background: rgba(255,255,255,0.06);
+        color: var(--text);
+        border-color: var(--border-strong);
+      }
+      /* Second-row AGOL layer picker: full width of #mapCtls, two equal
+         columns each containing a toggle + its filter dropdown + status.
+         The [hidden] selector is needed because `display: flex` here would
+         otherwise override the HTML `hidden` attribute (CSS beats the
+         attribute's implicit display:none). */
+      .agol-bar {
+        display: flex; gap: 18px; flex-wrap: wrap;
+        padding: 6px 2px 2px;
+        border-top: 1px solid var(--border);
+        margin-top: 2px;
+      }
+      .agol-bar[hidden] { display: none; }
+      .agol-bar-item { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+      .agol-bar-item > label { font-size: 11px; }
+      .agol-bar-item > label input[disabled] + * { color: var(--muted); }
+      .agol-bar-sub { display: flex; align-items: center; gap: 6px; padding-left: 18px; min-width: 0; }
+      .agol-bar-sub select {
+        flex: 1 1 auto; min-width: 0; max-width: 220px;
         background: var(--bg-elev-1); color: var(--text);
         border: 1px solid var(--border); border-radius: var(--r-sm);
-        font-size: 11px; padding: 1px 4px; max-width: 180px;
+        font-size: 11px; padding: 1px 4px;
       }
+      .agol-bar-status { color: var(--muted); font-size: 10px; white-space: nowrap; flex: 0 0 auto; }
+      .muted-mini { color: var(--muted); font-size: 10px; }
       .muted-mini { color: var(--muted); font-size: 10px; }
       .maplibregl-popup-content {
         background: var(--bg-elev-1) !important;
@@ -1129,26 +1158,36 @@
         <div id="mapCtls">
           <button id="mapCtlsToggle" type="button" class="mapCtls-min"
                   title="Hide controls" aria-label="Hide controls">‹</button>
-          <span class="mapCtls-body">
-            <label><input type="checkbox" id="refToggle" checked /> Labels &amp; roads</label>
-            <label><input type="checkbox" id="sitesToggle" /> RMBL Research Sites</label>
-            <span id="sitesStatus" style="color: var(--muted); font-size: 10px;"></span>
-            <span id="mySitesGroup" class="my-sites-group"
-              ><label><input type="checkbox" id="mySitesToggle" disabled />My Research Sites</label
-              ><button type="button" id="agolSignInBtn" class="link-btn">Sign in with ArcGIS</button
-              ><span id="agolSignedInBlock" hidden
-                ><select id="researcherFilter" title="Filter by researcher"><option value="">All researchers</option></select
-                ><span id="agolUser" class="muted-mini"></span
-                ><button type="button" id="agolSignOutBtn" class="link-btn">Sign out</button
-              ></span
-              ><span id="mySitesStatus" style="color: var(--muted); font-size: 10px;"></span
-            ></span>
-            <span id="dataCollectionGroup" class="my-sites-group" hidden
-              ><label><input type="checkbox" id="dataCollectionToggle" disabled />Data Collection</label
-              ><select id="dataCollectionPlan" title="Filter by Research Plan" disabled><option value="">All plans</option></select
-              ><span id="dataCollectionStatus" style="color: var(--muted); font-size: 10px;"></span
-            ></span>
-          </span>
+          <div class="mapCtls-body">
+            <div class="mapCtls-top">
+              <label><input type="checkbox" id="refToggle" checked /> Labels &amp; roads</label>
+              <label><input type="checkbox" id="sitesToggle" /> RMBL Research Sites</label>
+              <span id="sitesStatus" style="color: var(--muted); font-size: 10px;"></span>
+              <span class="agol-header">
+                <button type="button" id="agolSignInBtn" class="link-btn agol-signin-link">Add My Research Sites →</button>
+                <span id="agolUserInfo" hidden>
+                  <span id="agolUser" class="muted-mini"></span>
+                  <button type="button" id="agolSignOutBtn" class="link-btn">Sign out</button>
+                </span>
+              </span>
+            </div>
+            <div id="agolBar" class="agol-bar" hidden>
+              <div class="agol-bar-item">
+                <label><input type="checkbox" id="mySitesToggle" disabled />2025 research sites (curated)</label>
+                <div class="agol-bar-sub">
+                  <select id="researcherFilter" title="Filter by researcher"><option value="">All researchers</option></select>
+                  <span id="mySitesStatus" class="agol-bar-status"></span>
+                </div>
+              </div>
+              <div class="agol-bar-item">
+                <label><input type="checkbox" id="dataCollectionToggle" disabled />2026 research sites (live)</label>
+                <div class="agol-bar-sub">
+                  <select id="dataCollectionPlan" title="Filter by Research Plan" disabled><option value="">All plans</option></select>
+                  <span id="dataCollectionStatus" class="agol-bar-status"></span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <div id="mapLegend" class="empty"></div>
         <div id="mapDate" class="map-date" hidden></div>
@@ -4638,28 +4677,31 @@ message("Saved to ${outName}")
         });
       })();
 
-      // -------- AGOL sign-in / "my research sites" wiring --------
+      // -------- AGOL sign-in wiring (2025 curated + 2026 live overlays) --------
+      // Top-row sign-in CTA / user info, plus the full-width AGOL bar below
+      // them which hosts both overlay toggles. The bar is hidden until sign-in.
       const myToggle = document.getElementById("mySitesToggle");
       const mySignIn = document.getElementById("agolSignInBtn");
       const mySignOut = document.getElementById("agolSignOutBtn");
       const myFilter = document.getElementById("researcherFilter");
       const myStatus = document.getElementById("mySitesStatus");
       const myUserLbl = document.getElementById("agolUser");
-      const mySignedBlock = document.getElementById("agolSignedInBlock");
-      // Data Collection group (parallel UI, same OAuth token).
-      const dcGroup = document.getElementById("dataCollectionGroup");
+      const agolBar = document.getElementById("agolBar");
+      const agolUserInfo = document.getElementById("agolUserInfo");
+      // 2026-live overlay shares the same bar + auth.
       const dcToggle = document.getElementById("dataCollectionToggle");
       const dcPlan = document.getElementById("dataCollectionPlan");
       const dcStatus = document.getElementById("dataCollectionStatus");
 
       function setMyAuthUI(tok) {
         const signedIn = !!tok;
+        // Top row: swap sign-in CTA for user info.
         mySignIn.hidden = signedIn;
-        mySignedBlock.hidden = !signedIn;
-        myToggle.disabled = !signedIn;
+        agolUserInfo.hidden = !signedIn;
         myUserLbl.textContent = signedIn && tok.username ? tok.username : "";
-        // Data Collection group: only meaningful when signed in.
-        dcGroup.hidden = !signedIn;
+        // AGOL bar: hidden + toggles disabled when signed out.
+        agolBar.hidden = !signedIn;
+        myToggle.disabled = !signedIn;
         dcToggle.disabled = !signedIn;
         dcPlan.disabled = !signedIn;
         if (!signedIn) {
@@ -4673,7 +4715,7 @@ message("Saved to ${outName}")
           setMySitesVisibility(false);
           myFilter.innerHTML = '<option value="">All researchers</option>';
           myStatus.textContent = "";
-          // Same reset for the Data Collection overlay.
+          // Same reset for the 2026-live overlay.
           dcToggle.checked = false;
           state.dataCollectionOn = false;
           state.dataCollectionData = null;
