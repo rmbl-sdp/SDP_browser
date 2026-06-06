@@ -1,5 +1,14 @@
 # Data Collection feature layers as AOIs
 
+> **Status: shipped in v0.2.** This doc is the original design + implementation
+> plan; behavior described below matches what's live on
+> [sdpbrowser.org](https://sdpbrowser.org), with a few refinements made during
+> integration (labels rethought to "2025 research sites (curated)" + "2026
+> research sites (live)" instead of generic names; the AGOL controls moved to
+> a dedicated full-width bar that appears on sign-in; the 2026 live overlay
+> auto-loads on sign-in and on session restore; ESRI Field Maps GNSS metadata
+> is filtered from feature popups).
+
 Design + implementation plan for surfacing the AGOL "Data Collection 2026"
 Point / Line / Polygon FeatureServer layers in the SDP Browser, filterable by
 `Research_Plan`, with one-click "use as AOI" behavior including small-buffer

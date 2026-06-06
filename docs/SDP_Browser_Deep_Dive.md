@@ -72,6 +72,16 @@ Pick a layer and it renders on an interactive map (built on MapLibre, over a des
 
 Layers stack with adjustable opacity and ordering, so you can drape a vegetation classification over a hillshade, or compare two releases of the same product.
 
+### Your research sites on the map
+
+Beyond the raster catalog, the browser pulls three live overlays from RMBL's ArcGIS Online org so you can see your field work in context with the SDP data:
+
+- **Public Research Map** — the curated public catalog of established RMBL research sites (no login required).
+- **2025 research sites (curated)** — last year's GPS data after quality control and publication, with a researcher filter so you can isolate one person's plots.
+- **2026 research sites (live)** — *this year's in-progress field data*, pulled directly from the Point / Line / Polygon collection layers used by RMBL Field Maps and Survey123 on handheld GPS devices. Filterable by Research Plan. Auto-loads on sign-in, so dropping your morning's plot on the map happens within minutes of returning to wifi.
+
+The last two require signing in with your ArcGIS account (one click; same credentials you already use for Field Maps). Clicking any feature — point, line, or polygon — surfaces a popup with the attributes you collected and a "Use as AOI" button that turns it into the current area of interest, ready for zonal stats and recipe export. Point features are buffered to 1 m polygons (matching the sub-meter precision of RMBL's GPS hardware) so they extract meaningfully against the finest drone-orthomosaic products.
+
 ### Extract
 
 Visualization answers "what does this look like?" Extraction answers "what are the numbers, here?" Draw an area of interest on the map — a rectangle or polygon around your study site — and the browser turns it into data:

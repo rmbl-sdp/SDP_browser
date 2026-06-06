@@ -13,7 +13,12 @@ Living document tracking what's shipped, what's next, and what's on the horizon.
 - RMBL Design System: warm-dark palette, Jost + JetBrains Mono fonts, design-system spacing/radii/shadows.
 - Deep links: `#add=R3D009` or `#add=ug-bare-earth-digital-elevation-model` opens layers by rsdp_id or collection slug.
 - AOI extraction: draw bbox, per-band histograms (colormap-matched), GeoTIFF/PNG subset download, R and Python code snippet copy, Jupyter notebook (.ipynb) and R Markdown (.Rmd) download with metadata, visualization, and export cells.
-- Map overlays: Esri labels + roads, RMBL ArcGIS research sites (click-to-AOI). Default landcover basemap at 50% opacity.
+- Map overlays: Esri labels + roads, public RMBL ArcGIS research sites (click-to-AOI). Default landcover basemap at 50% opacity.
+- Authenticated AGOL overlays (sign in with ArcGIS, single token covers both):
+  - **2025 research sites (curated)** — `ResearchSites_2026` polygons, researcher filter.
+  - **2026 research sites (live)** — `Point/Line/Polygon_Collection_2026` field data unified into one overlay, Research_Plan filter, ESRI Field Maps GNSS metadata hidden from popups, point features buffered to 1 m polygons for AOI extraction (high-precision sub-meter GPS baseline). Auto-on for the live overlay on sign-in and session restore.
+  - Compact "Add My Research Sites →" CTA when signed out; full-width AGOL bar appears under the top controls on sign-in.
+- Click-to-AOI works for every overlay; the previously-broken zero-area bbox on Point features is fixed by the same buffer helper.
 - URL hash: full session state (layers, view, discovery filters, dates) is shareable and survives reload.
 - Collapsible / resizable sidebar. Fly-to-extent on layer add.
 - `/cog/info` probe to fix STAC items that under-report band count.
