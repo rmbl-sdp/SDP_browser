@@ -1814,7 +1814,8 @@
               props.name || props.NAME || props.Name ||
               props.site_name || props.SiteName || "Research site";
             const rows = Object.entries(props)
-              .filter(([k, v]) => v != null && v !== "" && k.toLowerCase() !== "name")
+              .filter(([k, v]) => v != null && v !== "" && k.toLowerCase() !== "name" &&
+                                  !k.toLowerCase().includes("esrignss_")) // hide ESRI Field Maps GNSS metadata
               .slice(0, 10)
               .map(([k, v]) => `<dt>${k}</dt><dd>${String(v)}</dd>`).join("");
             const html =
@@ -1965,7 +1966,8 @@
               props.name || props.NAME || props.Name ||
               props.site_name || props.SiteName || "Research site";
             const rows = Object.entries(props)
-              .filter(([k, v]) => v != null && v !== "" && k.toLowerCase() !== "name")
+              .filter(([k, v]) => v != null && v !== "" && k.toLowerCase() !== "name" &&
+                                  !k.toLowerCase().includes("esrignss_")) // hide ESRI Field Maps GNSS metadata
               .slice(0, 10)
               .map(([k, v]) => `<dt>${k}</dt><dd>${String(v)}</dd>`).join("");
             const html =
@@ -2043,7 +2045,8 @@
             const rows = Object.entries(props)
               .filter(([k, v]) => v != null && v !== "" &&
                                   k.toLowerCase() !== "name" &&
-                                  !k.startsWith("_"))
+                                  !k.startsWith("_") &&
+                                  !k.toLowerCase().includes("esrignss_")) // hide ESRI Field Maps GNSS metadata
               .slice(0, 10)
               .map(([k, v]) => `<dt>${k}</dt><dd>${String(v)}</dd>`).join("");
             const html =
