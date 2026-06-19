@@ -10,15 +10,20 @@ domain_name         = "sdpbrowser.org"
 api_domain_name     = "api.sdpbrowser.org"
 acm_certificate_arn = "arn:aws:acm:us-east-1:254459631110:certificate/861f60a7-5344-4157-86d1-ed66a19e0fdc"
 
-# Sized for the public launch window (a few dozen concurrent users, some
-# co-located on shared wifi). Horizontal scaling per SPEC design intent:
-# 1 vCPU/2 GB tasks, autoscale floor 2 (redundancy + absorb first burst),
-# ceiling 6, scale out a touch earlier (CPU 50%). Bursts scale back in after.
+# Sized for low idle cost + spike absorption. Horizontal scaling per SPEC
+# design intent: 1 vCPU/2 GB tasks, autoscale floor 2 (redundancy + absorb
+# first burst), ceiling 10 (headroom for unscheduled demo/workshop spikes;
+# only billed during the spike), scale out earlier on CPU (40%). Tuned after
+# the 2026-06-12 demo where the burst peaked + receded inside the 9-min
+# scale-out window — earlier trigger + bigger ceiling shorten the window of
+# pain. Health-check grace cut to 60s (services/titiler is healthy in <30s
+# in practice) to reduce the lag between "task launching" and "task taking
+# traffic" by ~60s per added task.
 task_cpu             = 1024
 task_memory          = 2048
 desired_count        = 2
-max_count            = 6
-cpu_autoscale_target = 50
+max_count            = 10
+cpu_autoscale_target = 40
 
 # Co-located users share one NAT IP; WAF counts every request (incl. CloudFront
 # cache hits) before cache, so a workshop room can trip a tight per-IP limit.

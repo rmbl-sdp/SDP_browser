@@ -14,8 +14,13 @@ variable "web_acl_arn" {
 }
 
 variable "default_ttl_seconds" {
+  # 7 days. Tile URLs are deterministic (same query string → same image
+  # forever), so cache lifetime can be much longer than the original 24h
+  # default. Improves cache hit rate across multi-day usage (e.g. someone
+  # sharing a link with their lab the next day) and absorbs more of any
+  # unscheduled traffic spike before it reaches origin.
   type    = number
-  default = 86400
+  default = 604800
 }
 
 variable "max_ttl_seconds" {

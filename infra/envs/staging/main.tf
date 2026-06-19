@@ -94,7 +94,7 @@ module "ecs_titiler" {
   desired_count                     = var.desired_count
   max_count                         = var.max_count
   cpu_autoscale_target              = var.cpu_autoscale_target
-  health_check_grace_period_seconds = 120
+  health_check_grace_period_seconds = 60
   region                            = var.aws_region
   private_subnet_ids                = module.network.private_subnet_ids
   security_group_id                 = module.network.ecs_sg_id
