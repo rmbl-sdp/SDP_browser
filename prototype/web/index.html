@@ -1666,10 +1666,22 @@
         // Polling backup. The sourcedata event path is unreliable on
         // browser-cache hits (MapLibre may skip the "content" phase entirely),
         // and on animation timing where the metadata event fires before
-        // areTilesLoaded() returns true. Wait one frame for MapLibre to queue
-        // any tile loads, then poll until they're all done. Whichever signal
-        // (event or poll) trips swap() first wins; swap() is idempotent.
-        requestAnimationFrame(() => {
+        // areTilesLoaded() returns true. Whichever signal (event or poll)
+        // trips swap() first wins; swap() is idempotent.
+        //
+        // Critical: we DELAY the first areTilesLoaded() sample by ~50ms.
+        // areTilesLoaded() is a *global* "no in-flight requests" check, and
+        // on a fresh addSource MapLibre hasn't yet queued the new source's
+        // tile requests until its internal render tick runs. Sampling on the
+        // next requestAnimationFrame was too early — areTilesLoaded() would
+        // return true (old source had nothing pending; new source hadn't
+        // started fetching) and swap() would fire INSTANTLY, removing the
+        // old layer before any new tiles painted. That race was the cause of
+        // the animation "layer disappears, new doesn't draw immediately"
+        // tear. 50ms is enough for MapLibre to enqueue tile requests; if
+        // areTilesLoaded() is still true after that, tiles are genuinely
+        // cached and the swap is truly instant.
+        setTimeout(() => {
           if (done) return;
           if (map.areTilesLoaded()) { swap(); return; }
           ctl.poll = setInterval(() => {
@@ -1679,7 +1691,7 @@
               swap();
             }
           }, 50);
-        });
+        }, 50);
       }
 
       function removeMapLayer(uid) {
@@ -2254,7 +2266,7 @@
             : null,
           mode: (item.kind === "multiband" || item.default_mode) ? (item.default_mode || "rgb") : null,
           bidx: (item.kind === "multiband" || item.default_bidx) ? (item.default_bidx || [1, 2, 3]).slice() : null,
-          anim: { playing: false, stepMs: 1000, loop: true },
+          anim: { playing: false, stepMs: 1000, loop: true, fade: true },
           _pending: true, // tiles deferred until refinement completes
         };
         state.active.unshift(lyr);
@@ -3202,7 +3214,7 @@
         const item = catalogItem(lyr.catalogId);
         const ts = item?.timeseries;
         if (!ts || !ts.dates || ts.dates.length < 2) return;
-        if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+        if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true, fade: true };
         // Single-active: stop any other animating layer.
         state.active.forEach((l) => { if (l.uid !== lyr.uid) _stopAnim(l); });
         if (lyr.anim.playing) return;
@@ -3394,7 +3406,7 @@
         const animationBlock =
           (isTs && item.timeseries && item.timeseries.dates.length > 1)
             ? (() => {
-                const a = lyr.anim || { playing: false, stepMs: 1000, loop: true };
+                const a = lyr.anim || { playing: false, stepMs: 1000, loop: true, fade: true };
                 const playLabel = a.playing ? "⏸ Pause" : "▶ Play";
                 return `
                   <details class="act-animation"${lyr.animationOpen ? " open" : ""}>
@@ -3579,14 +3591,14 @@
         const animLoopInput  = body.querySelector('[data-k="animLoop"]');
         if (animToggleBtn) {
           animToggleBtn.addEventListener("click", () => {
-            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true, fade: true };
             if (lyr.anim.playing) stopAnimation(lyr);
             else startAnimation(lyr);
           });
         }
         if (animSpeedInput && animSpeedDisp) {
           animSpeedInput.addEventListener("input", (e) => {
-            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true, fade: true };
             lyr.anim.stepMs = +e.target.value;
             animSpeedDisp.textContent = `${(lyr.anim.stepMs / 1000).toFixed(1)}s`;
             // The async loop re-reads stepMs each iteration, so the new speed
@@ -3595,7 +3607,7 @@
         }
         if (animLoopInput) {
           animLoopInput.addEventListener("change", (e) => {
-            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true, fade: true };
             lyr.anim.loop = e.target.checked;
           });
         }
@@ -3603,13 +3615,13 @@
         const animDateInput = body.querySelector('[data-k="animDisplayDate"]');
         if (animFadeInput) {
           animFadeInput.addEventListener("change", (e) => {
-            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true, fade: true };
             lyr.anim.fade = e.target.checked;
           });
         }
         if (animDateInput) {
           animDateInput.addEventListener("change", (e) => {
-            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true };
+            if (!lyr.anim) lyr.anim = { playing: false, stepMs: 1000, loop: true, fade: true };
             lyr.anim.displayDate = e.target.checked;
             updateMapDateDisplay();
           });
@@ -5057,7 +5069,7 @@ message("Saved to ${outName}")
                   : null,
                 mode: (item.kind === "multiband" || item.default_mode) ? (item.default_mode || "rgb") : null,
                 bidx: (item.kind === "multiband" || item.default_bidx) ? (item.default_bidx || [1, 2, 3]).slice() : null,
-                anim: { playing: false, stepMs: 1000, loop: true },
+                anim: { playing: false, stepMs: 1000, loop: true, fade: true },
                 _pending: true, // tiles deferred until probeCogInfo resolves
               };
               state.active.push(lyr); // preserve saved order (top of hash = top of stack)
