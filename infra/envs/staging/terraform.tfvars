@@ -21,7 +21,12 @@ acm_certificate_arn = "arn:aws:acm:us-east-1:254459631110:certificate/861f60a7-5
 # traffic" by ~60s per added task.
 task_cpu             = 1024
 task_memory          = 2048
-desired_count        = 2
+# TEMP: floor raised 2 -> 6 for the 2026-07-27 evening workshop so CI applies
+# don't deflate the pre-scaled capacity. A one-shot scheduled autoscaling
+# action (workshop-2026-07-27-scale-down) drops the live floor back to 2 at
+# 21:00 MDT; revert this to 2 (and the WAF limit below to 25000) after the
+# workshop.
+desired_count        = 6
 max_count            = 10
 cpu_autoscale_target = 40
 
@@ -29,4 +34,6 @@ cpu_autoscale_target = 40
 # cache hits) before cache, so a workshop room can trip a tight per-IP limit.
 # Raised from the 10000 default to give a shared IP headroom while keeping the
 # AWS managed bot/bad-input rules intact.
-waf_rate_limit_per_5min = 25000
+# TEMP: doubled 25000 -> 50000 for the 2026-07-27 evening workshop (35
+# participants, one venue NAT IP). Revert to 25000 after 2026-07-27.
+waf_rate_limit_per_5min = 50000
