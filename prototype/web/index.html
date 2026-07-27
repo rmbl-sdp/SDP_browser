@@ -1138,7 +1138,7 @@
           <label class="dl-group-label">Download Image</label>
           <div class="dl-row">
             <button id="dlTif" class="dl-btn">GeoTIFF</button>
-            <button id="dlPng" class="dl-btn">PNG (styled)</button>
+            <button id="dlPng" class="dl-btn" title="Map figure with legend, scale bar, and north arrow">PNG (styled)</button>
           </div>
           <label class="dl-group-label">Copy Code</label>
           <div class="dl-row">
@@ -1252,6 +1252,7 @@
     <script type="module">
       import { loadRepo, makeInMemoryRepo, stacBrowserLink, invalidateCache, resolveTimeseriesUrl, formatDateLabel } from "./js/catalog-static.js";
       import { signIn, getStoredToken, clearToken } from "./js/agol-auth.js";
+      import { composeExportPng } from "./js/export-compose.js";
       import { fetchPrivateSites, fetchDistinctValues, buildWhereForValue } from "./js/sites-private.js";
       import {
         fetchDataCollections,
@@ -4008,6 +4009,60 @@
         } catch { return "subset"; }
       }
 
+      // Native CRS for AOI subsets. If a product family ever ships in another
+      // CRS this needs to come from item metadata instead (see CLAUDE.md).
+      const SDP_DEFAULT_EXPORT_CRS = "EPSG:32613";
+
+      // Colormap stops honoring the invert toggle. Unlike renderMapLegend
+      // (which reads COLORMAPS[lyr.colormap] directly), this resolves the
+      // effective name the tiles are rendered with, reversing the base stops
+      // when the "_r" variant isn't itself a COLORMAPS entry.
+      function effectiveStops(lyr) {
+        const name = colormapName(lyr) || "viridis";
+        if (COLORMAPS[name]) return COLORMAPS[name];
+        if (name.endsWith("_r") && COLORMAPS[name.slice(0, -2)]) {
+          return [...COLORMAPS[name.slice(0, -2)]].reverse();
+        }
+        return COLORMAPS[lyr.colormap] || COLORMAPS.viridis;
+      }
+
+      // Materializes everything export-compose.js needs to draw the figure
+      // footer: title/meta text, legend spec, and ground width for the scale bar.
+      function exportFigureOpts(lyr, item, bbox) {
+        const isRgb = item.kind === "rgb" || lyr.mode === "rgb";
+        const dateBit = lyr.date != null ? ` · ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "";
+        const id = item.rsdp_id || lyr.catalogId;
+        const subtitle = `${id}${dateBit} · ${isRgb ? "RGB composite" : colormapName(lyr)}`;
+
+        let legend;
+        if (isRgb) {
+          const bidx = lyr.bidx || item.bidx || [1, 2, 3];
+          const bandNames = item.bands
+            ? bidx.map((i) => item.bands.find((b) => b.idx === i)?.name || `Band ${i}`)
+            : ["R", "G", "B"];
+          legend = { kind: "bands", bands: bandNames.map((n, i) => ({ name: n, color: BAND_COLORS[bidx[i]] || "#888" })) };
+        } else {
+          const [mn, mx] = lyr.rescale.split(",");
+          if (item.categorical) {
+            legend = { kind: "classes", stops: effectiveStops(lyr), min: Math.round(+mn), count: Math.round(+mx - +mn) + 1 };
+          } else {
+            legend = { kind: "ramp", stops: effectiveStops(lyr), min: mn, max: mx, units: formatUnits(item.units) };
+          }
+        }
+
+        const [minx, miny, maxx, maxy] = bbox;
+        const midLat = ((miny + maxy) / 2) * Math.PI / 180;
+        const groundWidthM = (maxx - minx) * 111320 * Math.cos(midLat);
+
+        return {
+          title: item.title || lyr.catalogId,
+          subtitle,
+          attribution: "RMBL Spatial Data Platform",
+          groundWidthM,
+          legend,
+        };
+      }
+
       async function downloadSubset(format) {
         const lyr = targetLayer();
         if (!state.aoi || !lyr) return;
@@ -4020,11 +4075,20 @@
 
         const u = new URL(`${TITILER}/cog/bbox/${bboxPath}.${format}`);
         u.searchParams.set("url", cogUrl);
+        // Without dst_crs, TiTiler outputs in the bbox CRS (EPSG:4326): PNGs
+        // render lat/lon-stretched and GeoTIFFs get silently resampled off the
+        // native grid rSDP delivers. (Must be `dst_crs` — TiTiler 0.19 ignores
+        // the dashed `dst-crs` form.)
+        u.searchParams.set("dst_crs", SDP_DEFAULT_EXPORT_CRS);
         if (format === "png") {
           u.searchParams.set("rescale", rescaleToRaw(lyr.rescale, item));
           const spec = renderSpec(lyr, item);
           spec.bidx.forEach((b) => u.searchParams.append("bidx", b));
           if (spec.useColormap && lyr.colormap) u.searchParams.set("colormap_name", colormapName(lyr));
+          if (item._nodata != null) u.searchParams.set("nodata", item._nodata);
+          // Cap figure exports: keeps canvas compositing well under browser
+          // limits; the GeoTIFF path stays full-resolution for analysis.
+          u.searchParams.set("max_size", "4096");
         }
 
         const info = document.getElementById("dlInfo");
@@ -4034,7 +4098,15 @@
         try {
           const resp = await fetch(u.toString());
           if (!resp.ok) throw new Error(await resp.text());
-          const blob = await resp.blob();
+          let blob = await resp.blob();
+          if (format === "png") {
+            try {
+              blob = await composeExportPng(blob, exportFigureOpts(lyr, item, bbox));
+            } catch (err) {
+              // Fall back to the raw TiTiler PNG rather than failing the download.
+              console.warn("PNG figure compositing failed; downloading raw image", err);
+            }
+          }
           const blobUrl = URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = blobUrl;

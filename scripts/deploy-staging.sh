@@ -39,6 +39,8 @@ if [[ "$MODE" == "full" || "$MODE" == "site" ]]; then
   cp prototype/web/js/idb.js app/web/js/idb.js
   cp prototype/web/js/agol-auth.js app/web/js/agol-auth.js
   cp prototype/web/js/sites-private.js app/web/js/sites-private.js
+  cp prototype/web/js/data-collection.js app/web/js/data-collection.js
+  cp prototype/web/js/export-compose.js app/web/js/export-compose.js
   cp prototype/web/catalog.json app/web/catalog.json
   cp prototype/web/rmbl-logo.png app/web/rmbl-logo.png
   cp prototype/web/favicon.svg app/web/favicon.svg
