@@ -9,7 +9,10 @@ export async function invalidateCache() {
   try { await idbDel(CACHE_KEY); } catch {}
 }
 
-const CACHE_KEY = "catalog-index-v1";
+// v2: descriptor schema unchanged, but the time-series template builder
+// learned compact YYYYMMDD dates (R7D006); bump forces a rebuild so cached
+// descriptors created by the old builder don't pin weeklies as singleband.
+const CACHE_KEY = "catalog-index-v2";
 
 // --- colormap + rescale heuristics (used when STAC doesn't tell us) ---
 
@@ -180,6 +183,19 @@ function detectDatesFromLinks(links) {
 function buildTimeseriesTemplate(sampleHref, sampleParsed) {
   if (!sampleHref || !sampleParsed) return null;
   let tmpl = sampleHref;
+
+  // Compact date (YYYYMMDD, e.g. GT_LST_20220301_25cm_v1.tif): the
+  // standalone-year regex below requires a non-digit after the year, so it
+  // can never match a compact date. Tokenize the whole date first.
+  if (sampleParsed.month != null && sampleParsed.day != null) {
+    const compact =
+      `${sampleParsed.year}` +
+      `${String(sampleParsed.month).padStart(2, "0")}` +
+      `${String(sampleParsed.day).padStart(2, "0")}`;
+    if (tmpl.includes(compact)) {
+      return tmpl.replace(compact, "{year}{month}{day}");
+    }
+  }
 
   // Year (4 digits, standalone). Replace ALL occurrences — the year may
   // appear in both a directory path and the filename (e.g. /2022/...2022_01_26.tif).
