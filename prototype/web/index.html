@@ -4160,9 +4160,16 @@
         const [minx, miny, maxx, maxy] = bbox;
         const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
         let rasterCall = `sdp_get_raster("${id}")`;
+        let unwrap = "";
         if (item.kind === "timeseries" && lyr.date != null) {
           const g = item.timeseries?.granularity;
           if (g === "yearly") rasterCall = `sdp_get_raster("${id}", years = ${lyr.date})`;
+          else if (item.type === "Imagery") {
+            // Imagery products return a named list of SpatRasters (each
+            // acquisition has its own extent); unwrap the single date.
+            rasterCall = `sdp_get_raster("${id}", dates = as.Date("${lyr.date}"))`;
+            unwrap = `\n# Imagery products return a named list of SpatRasters (one per date);\n# this single-date request yields a list of one — take the SpatRaster out.\ndataset  <- dataset[[1]]`;
+          }
           else rasterCall = `sdp_get_raster("${id}", date_start = as.Date("${lyr.date}${g === "monthly" ? "-01" : ""}"), date_end = as.Date("${lyr.date}${g === "monthly" ? "-28" : ""}"))`;
         }
         return `# devtools::install_github('rmbl-sdp/rSDP')
@@ -4171,7 +4178,7 @@ library(terra)
 
 # ${esc(item.title)}
 metadata <- sdp_get_metadata("${id}")
-dataset  <- ${rasterCall}
+dataset  <- ${rasterCall}${unwrap}
 
 # AOI bbox drawn in the SDP Browser (WGS84 lon/lat).
 # terra::ext() takes (xmin, xmax, ymin, ymax).
@@ -4193,9 +4200,16 @@ writeRaster(subset, "${outName}", overwrite = TRUE)
         const [minx, miny, maxx, maxy] = bbox;
         const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
         let openCall = `pysdp.open_raster("${id}")`;
+        let unwrap = "";
         if (item.kind === "timeseries" && lyr.date != null) {
           const g = item.timeseries?.granularity;
           if (g === "yearly") openCall = `pysdp.open_raster("${id}", years=[${lyr.date}])`;
+          else if (item.type === "Imagery") {
+            // Imagery products return a dict of Datasets (each acquisition
+            // has its own extent); unwrap the single date.
+            openCall = `pysdp.open_raster("${id}", dates=["${lyr.date}"])`;
+            unwrap = `\n# Imagery products return a dict of Datasets (one per date);\n# this single-date request yields a dict of one — take the Dataset out.\ndataset  = next(iter(dataset.values()))`;
+          }
           else openCall = `pysdp.open_raster("${id}", date_start="${lyr.date}${g === "monthly" ? "-01" : ""}", date_end="${lyr.date}${g === "monthly" ? "-28" : ""}")`;
         }
         return `# pip install pysdp
@@ -4203,7 +4217,7 @@ import pysdp
 
 # ${esc(item.title)}
 metadata = pysdp.get_metadata("${id}")
-dataset  = ${openCall}
+dataset  = ${openCall}${unwrap}
 
 # AOI bbox drawn in the SDP Browser (WGS84 lon/lat).
 # rioxarray clip_box takes (minx, miny, maxx, maxy).
@@ -4225,9 +4239,19 @@ subset.rio.to_raster("${outName}")
         const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
         const nbName = `${cogBasename(resolveCogUrl(lyr))}_AOI.ipynb`;
         let openCall = `pysdp.open_raster("${id}")`;
+        let unwrapLines = [];
         if (item.kind === "timeseries" && lyr.date != null) {
           const g = item.timeseries?.granularity;
           if (g === "yearly") openCall = `pysdp.open_raster("${id}", years=[${lyr.date}])`;
+          else if (item.type === "Imagery") {
+            openCall = `pysdp.open_raster("${id}", dates=["${lyr.date}"])`;
+            unwrapLines = [
+              `\n`,
+              `# Imagery products return a dict of Datasets (one per date);\n`,
+              `# this single-date request yields a dict of one — take the Dataset out.\n`,
+              `dataset = next(iter(dataset.values()))\n`,
+            ];
+          }
           else openCall = `pysdp.open_raster("${id}", date_start="${lyr.date}${g === "monthly" ? "-01" : ""}", date_end="${lyr.date}${g === "monthly" ? "-28" : ""}")`;
         }
         const isRgb = lyr.mode === "rgb";
@@ -4265,6 +4289,7 @@ subset.rio.to_raster("${outName}")
           `\n`,
           `# Load the dataset\n`,
           `dataset = ${openCall}\n`,
+          ...unwrapLines,
           `\n`,
           `# Clip to the AOI drawn in the SDP Browser\n`,
           `subset = dataset.rio.clip_box(\n`,
@@ -4351,9 +4376,14 @@ subset.rio.to_raster("${outName}")
         const outName = `${cogBasename(resolveCogUrl(lyr))}_AOI_subset.tif`;
         const rmdName = `${cogBasename(resolveCogUrl(lyr))}_AOI.Rmd`;
         let rasterCall = `sdp_get_raster("${id}")`;
+        let unwrap = "";
         if (item.kind === "timeseries" && lyr.date != null) {
           const g = item.timeseries?.granularity;
           if (g === "yearly") rasterCall = `sdp_get_raster("${id}", years = ${lyr.date})`;
+          else if (item.type === "Imagery") {
+            rasterCall = `sdp_get_raster("${id}", dates = as.Date("${lyr.date}"))`;
+            unwrap = `\n\n# Imagery products return a named list of SpatRasters (one per date);\n# this single-date request yields a list of one — take the SpatRaster out.\ndataset  <- dataset[[1]]`;
+          }
           else rasterCall = `sdp_get_raster("${id}", date_start = as.Date("${lyr.date}${g === "monthly" ? "-01" : ""}"), date_end = as.Date("${lyr.date}${g === "monthly" ? "-28" : ""}"))`;
         }
 
@@ -4395,7 +4425,7 @@ library(terra)
 
 \`\`\`{r load}
 metadata <- sdp_get_metadata("${id}")
-dataset  <- ${rasterCall}
+dataset  <- ${rasterCall}${unwrap}
 
 # AOI bbox drawn in the SDP Browser (WGS84 lon/lat).
 # terra::ext() takes (xmin, xmax, ymin, ymax).
