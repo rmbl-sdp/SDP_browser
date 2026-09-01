@@ -435,6 +435,12 @@
         color: var(--text); text-align: right;
         font-variant-numeric: tabular-nums;
       }
+      .stats-approx {
+        font-size: 11px; color: var(--muted);
+        background: rgba(240,80,40,0.08);
+        border: 1px solid rgba(240,80,40,0.35);
+        border-radius: var(--r-md); padding: 6px 8px; margin-bottom: 8px;
+      }
       .hist svg { width: 100%; height: 80px; display: block; }
       .hist-axis {
         display: flex; justify-content: space-between;
@@ -4096,6 +4102,20 @@
         const info = document.getElementById("dlInfo");
         const baseInfo = info.dataset.base || info.textContent;
         info.dataset.base = baseInfo;
+        // GeoTIFFs are full-resolution by design (analysis-grade); refuse
+        // reads that would time out server-side rather than fail opaquely.
+        // PNGs are already capped at max_size=4096 above, so any AOI is fine.
+        if (format === "tif") {
+          const estPixels = estimateAoiPixels(item);
+          if (estPixels != null && estPixels > MAX_FULLRES_PIXELS) {
+            const maxKm2 = (MAX_FULLRES_PIXELS * item.gsd * item.gsd) / 1e6;
+            info.textContent =
+              `${baseInfo} · AOI too large for a full-resolution GeoTIFF ` +
+              `(~${fmtPixelCount(estPixels)} pixels per band at ${item.gsd} m). ` +
+              `Draw an AOI under ~${fmtArea(maxKm2)}, or use the generated R/Python code to extract locally.`;
+            return;
+          }
+        }
         info.textContent = `${baseInfo} · fetching…`;
         try {
           const resp = await fetch(u.toString());
@@ -4502,24 +4522,95 @@ message("Saved to ${outName}")
         if (!state.aoi || !lyr) return;
         generateRmd(lyr, aoiBbox());
       });
+      // /cog/statistics and GeoTIFF subsets read the AOI window at full
+      // native resolution by default, so a large AOI over a fine-GSD product
+      // (e.g. 0.1 m drone RGB) means a multi-hundred-megapixel read that
+      // blows past the CloudFront origin timeout (or OOMs the Fargate task)
+      // and surfaces in the browser as an opaque "Failed to fetch". Above
+      // this per-band pixel budget, statistics fall back to a downsampled
+      // read (max_size below) and full-resolution GeoTIFF downloads are
+      // refused with guidance.
+      const MAX_FULLRES_PIXELS = 5e7;
+      const APPROX_STATS_MAX_SIZE = 1024;
+      const STATS_TIMEOUT_MS = 60000;
+
+      function estimateAoiPixels(item) {
+        const bbox = aoiBbox();
+        if (!bbox || !(item?.gsd > 0)) return null;
+        // Spherical degree→meter approximation; plenty for a guardrail.
+        const [w, s, e, n] = bbox;
+        const midLat = ((s + n) / 2) * Math.PI / 180;
+        const widthM = (e - w) * 111320 * Math.cos(midLat);
+        const heightM = (n - s) * 110540;
+        return (widthM * heightM) / (item.gsd * item.gsd);
+      }
+
+      function fmtArea(km2) {
+        if (km2 >= 10) return `${Math.round(km2)} km²`;
+        if (km2 >= 1) return `${km2.toFixed(1)} km²`;
+        return `${Math.round(km2 * 100)} ha`;
+      }
+
+      function fmtPixelCount(px) {
+        return px >= 1e9 ? `${(px / 1e9).toFixed(1)} billion` : `${Math.round(px / 1e6)} million`;
+      }
+
+      // Human-readable caveat shown above approximate (downsampled) stats.
+      function approxStatsNote(item, estPixels) {
+        const [w, s, e, n] = aoiBbox();
+        const midLat = ((s + n) / 2) * Math.PI / 180;
+        const longEdgeM = Math.max((e - w) * 111320 * Math.cos(midLat), (n - s) * 110540);
+        const effGsd = longEdgeM / APPROX_STATS_MAX_SIZE;
+        const maxKm2 = (MAX_FULLRES_PIXELS * item.gsd * item.gsd) / 1e6;
+        return `Approximate statistics: this AOI is ~${fmtPixelCount(estPixels)} ` +
+          `pixels per band at ${item.gsd} m — too large to read at full resolution, so values ` +
+          `were computed from a downsampled read (~${effGsd < 10 ? effGsd.toFixed(1) : Math.round(effGsd)} m). ` +
+          `Pixel counts and histograms reflect the downsampled grid. For exact statistics, draw an AOI ` +
+          `under ~${fmtArea(maxKm2)} or use the generated R/Python code.`;
+      }
+
       async function fetchStats() {
         const lyr = targetLayer();
         if (!state.aoi || !lyr) return;
         const cogUrl = resolveCogUrl(lyr);
         const statsEl = document.getElementById("stats");
         statsEl.hidden = false;
-        if (!statsEl.dataset.populated) statsEl.textContent = "Requesting statistics…";
+        const item = catalogItem(lyr.catalogId);
+        const estPixels = estimateAoiPixels(item);
+        const approx = estPixels != null && estPixels > MAX_FULLRES_PIXELS;
+        if (!statsEl.dataset.populated) {
+          statsEl.textContent = approx
+            ? "Large AOI — computing approximate statistics from a downsampled read…"
+            : "Requesting statistics…";
+        }
         try {
-          const resp = await fetch(
-            `${TITILER}/cog/statistics?url=${encodeURIComponent(cogUrl)}`,
-            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state.aoi) },
-          );
+          const u = new URL(`${TITILER}/cog/statistics`);
+          u.searchParams.set("url", cogUrl);
+          // max_size caps the long edge of the read; GDAL serves it from COG
+          // overviews, so cost stays bounded regardless of AOI size.
+          if (approx) u.searchParams.set("max_size", APPROX_STATS_MAX_SIZE);
+          const resp = await fetch(u.toString(), {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(state.aoi),
+            signal: AbortSignal.timeout(STATS_TIMEOUT_MS),
+          });
           if (!resp.ok) throw new Error(await resp.text());
           const data = await resp.json();
-          renderStats(statsEl, data, lyr);
+          renderStats(statsEl, data, lyr, approx ? approxStatsNote(item, estPixels) : null);
           statsEl.dataset.populated = "1";
         } catch (err) {
-          statsEl.textContent = "Error: " + err.message;
+          delete statsEl.dataset.populated;
+          // TypeError = fetch failed at the network layer (gateway timeout /
+          // dropped connection, no CORS headers on the error response);
+          // TimeoutError/AbortError = our own client-side timeout fired.
+          if (err instanceof TypeError || err.name === "TimeoutError" || err.name === "AbortError") {
+            statsEl.textContent =
+              "Statistics request timed out before completing — the AOI is likely too large " +
+              "for this layer's resolution. Try drawing a smaller area, or use the generated " +
+              "R/Python code to run the extraction locally.";
+          } else {
+            statsEl.textContent = "Error: " + err.message;
+          }
         }
       }
 
@@ -4542,7 +4633,7 @@ message("Saved to ${outName}")
         }).join("");
         return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${bars}</svg>`;
       }
-      function renderStats(container, data, lyr) {
+      function renderStats(container, data, lyr, approxNote) {
         container.innerHTML = "";
         const item = catalogItem(lyr.catalogId);
         let stats = data;
@@ -4555,6 +4646,12 @@ message("Saved to ${outName}")
         header.style.cssText = "font-size:11px;color:var(--muted);margin-bottom:6px;";
         header.textContent = `${esc(item.title)}` + (lyr.date != null ? `  ·  ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "");
         container.appendChild(header);
+        if (approxNote) {
+          const note = document.createElement("div");
+          note.className = "stats-approx";
+          note.textContent = approxNote;
+          container.appendChild(note);
+        }
         bandKeys.forEach((bk) => {
           const s = stats[bk];
           const wrap = document.createElement("div"); wrap.className = "stats-band";
