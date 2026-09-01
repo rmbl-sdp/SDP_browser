@@ -1100,7 +1100,7 @@
       <span class="topbar-sep" aria-hidden="true"></span>
       <a class="topbar-parent" href="https://data.rmbl.org" target="_blank" rel="noopener">Data Hub</a>
       <span class="topbar-chev" aria-hidden="true">›</span>
-      <span class="topbar-current">SDP Browser<span class="ver">v0.2</span></span>
+      <span class="topbar-current">SDP Browser<span class="ver">v0.3</span></span>
       <nav>
         <a href="https://data.rmbl.org/news/2026-05-sdp-browser-deep-dive/" target="_blank" rel="noopener">About</a>
       </nav>
@@ -1159,6 +1159,16 @@
           <div id="dlInfo" class="hint" style="margin-top: 6px;"></div>
         </div>
         <div id="aoiDownloadsEmpty" class="hint">Draw an AOI to enable subset downloads.</div>
+
+        <h3 class="sub">Download Full Layer</h3>
+        <div id="fullDl" hidden>
+          <div class="dl-row">
+            <button id="dlFullTif" class="dl-btn"
+                    title="Original cloud-optimized GeoTIFF from S3 — full extent, full resolution, native CRS (EPSG:32613)">GeoTIFF (full extent)</button>
+          </div>
+          <div id="fullDlInfo" class="hint" style="margin-top: 6px;"></div>
+        </div>
+        <div id="fullDlEmpty" class="hint">Turn on a layer to download its source GeoTIFF.</div>
       </aside>
       <div id="map">
         <div id="mapCtls">
@@ -4145,7 +4155,72 @@
         }
       }
 
+      // ---------- full-extent download ----------
+      // Full extent = the source COG itself, linked straight from S3. No
+      // TiTiler involvement: zero server compute, full native resolution,
+      // and no oversized-read timeout risk (files can be multi-GB — the
+      // size is shown in the info line so users know what they're in for).
+      const cogSizeCache = new Map();
+      async function cogFileSize(url) {
+        if (cogSizeCache.has(url)) return cogSizeCache.get(url);
+        let size = null;
+        try {
+          const resp = await fetch(url, { method: "HEAD" });
+          const len = Number(resp.headers.get("Content-Length"));
+          if (resp.ok && len > 0) size = len;
+        } catch { /* size stays unknown; button still works */ }
+        cogSizeCache.set(url, size);
+        return size;
+      }
+      function fmtBytes(b) {
+        if (b >= 1e9) return `${(b / 1e9).toFixed(1)} GB`;
+        if (b >= 1e6) return `${Math.round(b / 1e6)} MB`;
+        return `${Math.max(1, Math.round(b / 1e3))} KB`;
+      }
+      function cogFilename(url) {
+        try { return new URL(url).pathname.split("/").pop() || "layer.tif"; }
+        catch { return "layer.tif"; }
+      }
+      async function updateFullDownload() {
+        const wrap = document.getElementById("fullDl");
+        const empty = document.getElementById("fullDlEmpty");
+        const info = document.getElementById("fullDlInfo");
+        const lyr = targetLayer();
+        const item = lyr && catalogItem(lyr.catalogId);
+        if (!item) {
+          wrap.hidden = true;
+          empty.hidden = false;
+          return;
+        }
+        wrap.hidden = false;
+        empty.hidden = true;
+        const cogUrl = resolveCogUrl(lyr);
+        const dateBit = lyr.date != null ? ` · ${formatDateLabel(lyr.date, item?.timeseries?.granularity)}` : "";
+        info.textContent = `${item.title}${dateBit} · ${cogFilename(cogUrl)}`;
+        info.dataset.url = cogUrl;
+        const size = await cogFileSize(cogUrl);
+        // Layer/date may have changed while the HEAD request was in flight.
+        if (info.dataset.url !== cogUrl) return;
+        if (size != null) info.textContent += ` (${fmtBytes(size)})`;
+      }
+      document.getElementById("dlFullTif").addEventListener("click", () => {
+        const lyr = targetLayer();
+        if (!lyr) return;
+        const cogUrl = resolveCogUrl(lyr);
+        // Direct S3 link in a new tab: the browser downloads the TIFF (it
+        // can't render it inline), and the app tab is left untouched.
+        const a = document.createElement("a");
+        a.href = cogUrl;
+        a.download = cogFilename(cogUrl);
+        a.target = "_blank";
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      });
+
       function updateAoiDownloads() {
+        updateFullDownload();
         const wrap = document.getElementById("aoiDownloads");
         const empty = document.getElementById("aoiDownloadsEmpty");
         const info = document.getElementById("dlInfo");
